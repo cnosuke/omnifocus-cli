@@ -1,7 +1,7 @@
 (() => {
   try {
     if (!isOmniFocusRunning()) {
-      return JSON.stringify({ success: false, error: "OmniFocus is not running" });
+      return JSON.stringify({ success: false, error: 'OmniFocus is not running' });
     }
 
     const app = getApp();
@@ -9,7 +9,7 @@
     const taskName = getArg(4, null);
 
     if (!taskName) {
-      return JSON.stringify({ success: false, error: "Task name is required" });
+      return JSON.stringify({ success: false, error: 'Task name is required' });
     }
 
     const opts = parseJsonArg(5, {});
@@ -18,7 +18,7 @@
     if (opts.project) {
       const project = findProject(doc, opts.project);
       if (!project) {
-        return JSON.stringify({ success: false, error: "Project not found: " + opts.project });
+        return JSON.stringify({ success: false, error: 'Project not found: ' + opts.project });
       }
       task = app.Task({ name: taskName });
       project.rootTask.tasks.push(task);
@@ -60,7 +60,7 @@
 
     return JSON.stringify({
       success: true,
-      task: formatTaskBrief(task)
+      task: formatTaskBrief(task),
     });
   } catch (e) {
     return JSON.stringify({ success: false, error: e.message });
