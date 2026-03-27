@@ -58,14 +58,14 @@ of tasks flagged                 # Flagged tasks
 
 ## Date Formats
 
-| Format       | Example        | Description                    |
-|--------------|----------------|--------------------------------|
-| `today`      | `--due today`  | Today at 17:00                 |
-| `tomorrow`   | `--due tomorrow` | Tomorrow at 17:00            |
-| `next week`  | `--due "next week"` | 7 days from now at 17:00  |
-| `+Nd`        | `--due +3d`    | N days from now at 17:00       |
-| `+Nw`        | `--due +2w`    | N weeks from now at 17:00      |
-| ISO 8601     | `--due 2026-03-15` | Specific date              |
+| Format      | Example             | Description               |
+| ----------- | ------------------- | ------------------------- |
+| `today`     | `--due today`       | Today at 17:00            |
+| `tomorrow`  | `--due tomorrow`    | Tomorrow at 17:00         |
+| `next week` | `--due "next week"` | 7 days from now at 17:00  |
+| `+Nd`       | `--due +3d`         | N days from now at 17:00  |
+| `+Nw`       | `--due +2w`         | N weeks from now at 17:00 |
+| ISO 8601    | `--due 2026-03-15`  | Specific date             |
 
 Default time is 17:00 for relative and keyword-based dates.
 
@@ -74,6 +74,7 @@ Default time is 17:00 for relative and keyword-based dates.
 All commands return JSON. If `jq` is installed, output is automatically pretty-printed.
 
 **Success (list):**
+
 ```json
 {
   "success": true,
@@ -83,6 +84,7 @@ All commands return JSON. If `jq` is installed, output is automatically pretty-p
 ```
 
 **Success (single task):**
+
 ```json
 {
   "success": true,
@@ -91,6 +93,7 @@ All commands return JSON. If `jq` is installed, output is automatically pretty-p
 ```
 
 **Error:**
+
 ```json
 {
   "success": false,
@@ -102,18 +105,18 @@ All commands return JSON. If `jq` is installed, output is automatically pretty-p
 
 **Brief output** (`formatTaskBrief`):
 
-| Field       | Type    | Description          |
-|-------------|---------|----------------------|
-| `id`        | string  | OmniFocus task ID    |
-| `name`      | string  | Task name            |
-| `dueDate`   | string? | ISO 8601 due date    |
-| `flagged`   | boolean | Flagged status       |
-| `completed` | boolean | Completion status    |
+| Field       | Type    | Description       |
+| ----------- | ------- | ----------------- |
+| `id`        | string  | OmniFocus task ID |
+| `name`      | string  | Task name         |
+| `dueDate`   | string? | ISO 8601 due date |
+| `flagged`   | boolean | Flagged status    |
+| `completed` | boolean | Completion status |
 
 **Detailed output** adds (`formatTaskDetail`):
 
 | Field              | Type     | Description              |
-|--------------------|----------|--------------------------|
+| ------------------ | -------- | ------------------------ |
 | `note`             | string   | Task note                |
 | `deferDate`        | string?  | ISO 8601 defer date      |
 | `completionDate`   | string?  | ISO 8601 completion date |

@@ -48,10 +48,7 @@ const SCRIPT = wrapJxaScript(`
 
     return JSON.stringify({ success: true, task: formatTaskBrief(task) });`);
 
-export function buildTaskAddArgs(
-  name: string,
-  options: TaskAddOptions,
-): JxaRunnerOptions {
+export function buildTaskAddArgs(name: string, options: TaskAddOptions): JxaRunnerOptions {
   return {
     args: [name, JSON.stringify(options)],
   };

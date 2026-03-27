@@ -22,4 +22,14 @@ describe('parseJxaOutput', () => {
     const result = { stdout: '', exitCode: 0 };
     expect(() => parseJxaOutput(result)).toThrow('Invalid JSON from osascript');
   });
+
+  it('throws on response missing success field', () => {
+    const result = { stdout: '{"tasks":[]}', exitCode: 0 };
+    expect(() => parseJxaOutput(result)).toThrow("missing 'success' field");
+  });
+
+  it('throws on non-object response', () => {
+    const result = { stdout: '"just a string"', exitCode: 0 };
+    expect(() => parseJxaOutput(result)).toThrow("missing 'success' field");
+  });
 });

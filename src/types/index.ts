@@ -32,15 +32,11 @@ export interface TaskSearchOptions {
   limit?: number;
 }
 
-export interface JxaTaskResponse<T> {
+export interface JxaSuccessResponse {
   success: true;
-  task: T;
-}
-
-export interface JxaTasksResponse<T> {
-  success: true;
-  tasks: T[];
-  totalCount: number;
+  task?: unknown;
+  tasks?: unknown[];
+  totalCount?: number;
 }
 
 export interface JxaErrorResponse {
@@ -48,7 +44,4 @@ export interface JxaErrorResponse {
   error: string;
 }
 
-export type JxaResponse<T> =
-  | JxaTaskResponse<T>
-  | JxaTasksResponse<T>
-  | JxaErrorResponse;
+export type JxaResponse = JxaSuccessResponse | JxaErrorResponse;

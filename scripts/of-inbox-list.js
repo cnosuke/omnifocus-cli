@@ -1,12 +1,12 @@
 (() => {
   try {
     if (!isOmniFocusRunning()) {
-      return JSON.stringify({ success: false, error: "OmniFocus is not running" });
+      return JSON.stringify({ success: false, error: 'OmniFocus is not running' });
     }
 
     const app = getApp();
     const doc = getDoc(app);
-    const mode = getArg(4, "brief");
+    const mode = getArg(4, 'brief');
     const allTasks = doc.inboxTasks();
     const result = [];
     var total = 0;
@@ -15,7 +15,7 @@
       if (allTasks[i].completed()) continue;
       total++;
       if (result.length >= 50) continue;
-      if (mode === "detailed") {
+      if (mode === 'detailed') {
         result.push(formatTaskDetail(allTasks[i]));
       } else {
         result.push(formatTaskBrief(allTasks[i]));

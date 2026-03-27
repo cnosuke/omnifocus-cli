@@ -1,11 +1,9 @@
-import { runJxa } from '../../jxa/runner.js';
-import { parseJxaOutput } from '../../jxa/parse.js';
+import { runAndPrint } from '../run-and-print.js';
 import {
   buildTasksFlaggedScript,
   buildTasksOverdueScript,
   buildTasksTodayScript,
 } from '../../jxa/scripts/tasks-filter.js';
-import type { TaskBrief } from '../../types/index.js';
 
 async function runSimpleTasksCommand(
   args: string[],
@@ -14,18 +12,15 @@ async function runSimpleTasksCommand(
 ): Promise<void> {
   for (const arg of args) {
     if (arg === '--help' || arg === '-h') {
-      console.log(`Usage: of tasks ${commandName}\n\nList ${commandName} tasks.\n\nExamples:\n  of tasks ${commandName}`);
+      console.log(
+        `Usage: of tasks ${commandName}\n\nList ${commandName} tasks.\n\nExamples:\n  of tasks ${commandName}`,
+      );
       return;
     }
-    throw new Error(
-      `Unknown argument '${arg}'. Run 'of tasks ${commandName} --help' for usage.`,
-    );
+    throw new Error(`Unknown argument '${arg}'. Run 'of tasks ${commandName} --help' for usage.`);
   }
 
-  const script = buildScript();
-  const result = await runJxa(script);
-  const response = parseJxaOutput<TaskBrief>(result);
-  console.log(JSON.stringify(response, null, 2));
+  await runAndPrint(buildScript());
 }
 
 export function runTasks(args: string[]): Promise<void> {
@@ -43,9 +38,7 @@ export function runTasks(args: string[]): Promise<void> {
       printTasksHelp();
       return Promise.resolve();
     default:
-      throw new Error(
-        `Unknown tasks subcommand '${sub ?? ''}'. Run 'of tasks --help' for usage.`,
-      );
+      throw new Error(`Unknown tasks subcommand '${sub ?? ''}'. Run 'of tasks --help' for usage.`);
   }
 }
 

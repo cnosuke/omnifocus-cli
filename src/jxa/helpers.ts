@@ -1,3 +1,5 @@
+export const DEFAULT_TASK_LIMIT = 50;
+
 export const JXA_HELPERS = `
 ObjC.import('Foundation');
 

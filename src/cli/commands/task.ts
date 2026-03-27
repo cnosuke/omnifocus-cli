@@ -1,9 +1,8 @@
-import { runJxa } from '../../jxa/runner.js';
-import { parseJxaOutput } from '../../jxa/parse.js';
+import { runAndPrint } from '../run-and-print.js';
 import { TASK_ADD_SCRIPT, buildTaskAddArgs } from '../../jxa/scripts/task-add.js';
 import { TASK_COMPLETE_SCRIPT, buildTaskCompleteArgs } from '../../jxa/scripts/task-complete.js';
 import { TASK_SEARCH_SCRIPT, buildTaskSearchArgs } from '../../jxa/scripts/task-search.js';
-import type { TaskAddOptions, TaskBrief, TaskSearchOptions } from '../../types/index.js';
+import type { TaskAddOptions, TaskSearchOptions } from '../../types/index.js';
 
 function requireFlagValue(flag: string, args: string[], index: number): string {
   const value = args[index];
@@ -19,6 +18,21 @@ function requireInteger(flag: string, value: string): number {
     throw new Error(`${flag} must be a positive integer, got '${value}'`);
   }
   return n;
+}
+
+function requirePositionalArg(
+  args: string[],
+  current: string,
+  existing: string,
+  helpCommand: string,
+): string {
+  if (current.startsWith('-')) {
+    throw new Error(`Unknown flag '${current}'. Run '${helpCommand}' for usage.`);
+  }
+  if (existing) {
+    throw new Error(`Unexpected argument '${current}'. Run '${helpCommand}' for usage.`);
+  }
+  return current;
 }
 
 export async function taskAdd(args: string[]): Promise<void> {
@@ -58,17 +72,7 @@ export async function taskAdd(args: string[]): Promise<void> {
         printTaskAddHelp();
         return;
       default:
-        if (arg.startsWith('-')) {
-          throw new Error(
-            `Unknown flag '${arg}'. Run 'of task add --help' for usage.`,
-          );
-        }
-        if (name) {
-          throw new Error(
-            `Unexpected argument '${arg}'. Run 'of task add --help' for usage.`,
-          );
-        }
-        name = arg;
+        name = requirePositionalArg(args, arg, name, 'of task add --help');
     }
   }
 
@@ -80,9 +84,7 @@ export async function taskAdd(args: string[]): Promise<void> {
     options.tags = tags;
   }
 
-  const result = await runJxa(TASK_ADD_SCRIPT, buildTaskAddArgs(name, options));
-  const response = parseJxaOutput<TaskBrief>(result);
-  console.log(JSON.stringify(response, null, 2));
+  await runAndPrint(TASK_ADD_SCRIPT, buildTaskAddArgs(name, options));
 }
 
 export async function taskComplete(args: string[]): Promise<void> {
@@ -94,28 +96,14 @@ export async function taskComplete(args: string[]): Promise<void> {
       printTaskCompleteHelp();
       return;
     }
-    if (arg.startsWith('-')) {
-      throw new Error(
-        `Unknown flag '${arg}'. Run 'of task complete --help' for usage.`,
-      );
-    }
-    if (taskId) {
-      throw new Error(
-        `Unexpected argument '${arg}'. Run 'of task complete --help' for usage.`,
-      );
-    }
-    taskId = arg;
+    taskId = requirePositionalArg(args, arg, taskId, 'of task complete --help');
   }
 
   if (!taskId) {
-    throw new Error(
-      "Task ID is required. Run 'of task complete --help' for usage.",
-    );
+    throw new Error("Task ID is required. Run 'of task complete --help' for usage.");
   }
 
-  const result = await runJxa(TASK_COMPLETE_SCRIPT, buildTaskCompleteArgs(taskId));
-  const response = parseJxaOutput<TaskBrief>(result);
-  console.log(JSON.stringify(response, null, 2));
+  await runAndPrint(TASK_COMPLETE_SCRIPT, buildTaskCompleteArgs(taskId));
 }
 
 export async function taskSearch(args: string[]): Promise<void> {
@@ -132,39 +120,22 @@ export async function taskSearch(args: string[]): Promise<void> {
         options.flagged = true;
         break;
       case '--limit':
-        options.limit = requireInteger(
-          '--limit',
-          requireFlagValue('--limit', args, ++i),
-        );
+        options.limit = requireInteger('--limit', requireFlagValue('--limit', args, ++i));
         break;
       case '--help':
       case '-h':
         printTaskSearchHelp();
         return;
       default:
-        if (arg.startsWith('-')) {
-          throw new Error(
-            `Unknown flag '${arg}'. Run 'of task search --help' for usage.`,
-          );
-        }
-        if (keyword) {
-          throw new Error(
-            `Unexpected argument '${arg}'. Run 'of task search --help' for usage.`,
-          );
-        }
-        keyword = arg;
+        keyword = requirePositionalArg(args, arg, keyword, 'of task search --help');
     }
   }
 
   if (!keyword) {
-    throw new Error(
-      "Search keyword is required. Run 'of task search --help' for usage.",
-    );
+    throw new Error("Search keyword is required. Run 'of task search --help' for usage.");
   }
 
-  const result = await runJxa(TASK_SEARCH_SCRIPT, buildTaskSearchArgs(keyword, options));
-  const response = parseJxaOutput<TaskBrief>(result);
-  console.log(JSON.stringify(response, null, 2));
+  await runAndPrint(TASK_SEARCH_SCRIPT, buildTaskSearchArgs(keyword, options));
 }
 
 export function runTask(args: string[]): Promise<void> {
@@ -182,9 +153,7 @@ export function runTask(args: string[]): Promise<void> {
       printTaskHelp();
       return Promise.resolve();
     default:
-      throw new Error(
-        `Unknown task subcommand '${sub ?? ''}'. Run 'of task --help' for usage.`,
-      );
+      throw new Error(`Unknown task subcommand '${sub ?? ''}'. Run 'of task --help' for usage.`);
   }
 }
 

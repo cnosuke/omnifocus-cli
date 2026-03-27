@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { buildInboxListScript } from '../../../src/jxa/scripts/inbox-list.js';
 import { TASK_ADD_SCRIPT, buildTaskAddArgs } from '../../../src/jxa/scripts/task-add.js';
-import { TASK_COMPLETE_SCRIPT, buildTaskCompleteArgs } from '../../../src/jxa/scripts/task-complete.js';
+import {
+  TASK_COMPLETE_SCRIPT,
+  buildTaskCompleteArgs,
+} from '../../../src/jxa/scripts/task-complete.js';
 import { TASK_SEARCH_SCRIPT, buildTaskSearchArgs } from '../../../src/jxa/scripts/task-search.js';
 import {
   buildTasksFlaggedScript,
@@ -104,6 +107,12 @@ describe('buildTasksFlaggedScript', () => {
     const script = buildTasksFlaggedScript();
     expect(script).toContain('t.flagged()');
     expect(script).toContain('flattenedTasks');
+  });
+
+  it('tracks total count separately from result limit', () => {
+    const script = buildTasksFlaggedScript();
+    expect(script).toContain('total++');
+    expect(script).toContain('totalCount: total');
   });
 });
 

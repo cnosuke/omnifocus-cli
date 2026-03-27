@@ -1,7 +1,5 @@
-import { runJxa } from '../../jxa/runner.js';
-import { parseJxaOutput } from '../../jxa/parse.js';
+import { runAndPrint } from '../run-and-print.js';
 import { buildInboxListScript } from '../../jxa/scripts/inbox-list.js';
-import type { TaskBrief, TaskDetail } from '../../types/index.js';
 
 export async function inboxList(args: string[]): Promise<void> {
   let mode: 'brief' | 'detailed' = 'brief';
@@ -18,10 +16,7 @@ export async function inboxList(args: string[]): Promise<void> {
     }
   }
 
-  const script = buildInboxListScript(mode);
-  const result = await runJxa(script);
-  const response = parseJxaOutput<TaskBrief | TaskDetail>(result);
-  console.log(JSON.stringify(response, null, 2));
+  await runAndPrint(buildInboxListScript(mode));
 }
 
 export function runInbox(args: string[]): Promise<void> {
@@ -35,9 +30,7 @@ export function runInbox(args: string[]): Promise<void> {
       printInboxHelp();
       return Promise.resolve();
     default:
-      throw new Error(
-        `Unknown inbox subcommand '${sub ?? ''}'. Run 'of inbox --help' for usage.`,
-      );
+      throw new Error(`Unknown inbox subcommand '${sub ?? ''}'. Run 'of inbox --help' for usage.`);
   }
 }
 

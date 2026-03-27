@@ -1,7 +1,7 @@
 (() => {
   try {
     if (!isOmniFocusRunning()) {
-      return JSON.stringify({ success: false, error: "OmniFocus is not running" });
+      return JSON.stringify({ success: false, error: 'OmniFocus is not running' });
     }
 
     const app = getApp();
@@ -9,7 +9,7 @@
     const keyword = getArg(4, null);
 
     if (!keyword) {
-      return JSON.stringify({ success: false, error: "Search keyword is required" });
+      return JSON.stringify({ success: false, error: 'Search keyword is required' });
     }
 
     const opts = parseJsonArg(5, {});
@@ -30,7 +30,7 @@
       }
 
       const name = t.name().toLowerCase();
-      const note = (t.note() || "").toLowerCase();
+      const note = (t.note() || '').toLowerCase();
 
       if (name.indexOf(searchLower) !== -1 || note.indexOf(searchLower) !== -1) {
         result.push(formatTaskBrief(t));

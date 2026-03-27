@@ -28,10 +28,7 @@ const SCRIPT = wrapJxaScript(`
 
     return JSON.stringify({ success: true, tasks: result, totalCount: result.length });`);
 
-export function buildTaskSearchArgs(
-  keyword: string,
-  options: TaskSearchOptions,
-): JxaRunnerOptions {
+export function buildTaskSearchArgs(keyword: string, options: TaskSearchOptions): JxaRunnerOptions {
   return {
     args: [keyword, JSON.stringify(options)],
   };

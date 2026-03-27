@@ -1,7 +1,7 @@
 (() => {
   try {
     if (!isOmniFocusRunning()) {
-      return JSON.stringify({ success: false, error: "OmniFocus is not running" });
+      return JSON.stringify({ success: false, error: 'OmniFocus is not running' });
     }
 
     const app = getApp();
