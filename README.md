@@ -1,25 +1,25 @@
 # OmniFocus CLI (`of`)
 
-A CLI wrapper for OmniFocus automation via JXA (JavaScript for Automation). Provides a friendly command-line interface to manage OmniFocus tasks.
+A CLI for OmniFocus automation built with TypeScript and JXA (JavaScript for Automation). Provides a friendly command-line interface to manage OmniFocus tasks.
 
 ## Requirements
 
 - macOS
 - OmniFocus 4 Pro
-- Optional: `jq` for pretty-printed JSON output
+- Node.js >= 20
 
 ## Setup
 
 ```bash
-# Build
-cd omnifocus-skills
-./build.sh
+npm install
+npm run build
 
 # Run directly
-./of tasks today
+./dist/index.mjs tasks today
 
-# Or add to PATH
-ln -s "$(pwd)/dist/of" /usr/local/bin/of
+# Or link globally
+npm link
+of tasks today
 ```
 
 ## Usage
@@ -130,25 +130,40 @@ All commands return JSON. If `jq` is installed, output is automatically pretty-p
 ### Directory Structure
 
 ```
-omnifocus-skills/
-  lib/helpers.js    # Shared JXA utility functions
-  scripts/          # Individual JXA script sources
-  dist/             # Built self-contained scripts (gitignored)
-  of                # CLI wrapper script
-  build.sh          # Build script
+src/
+  cli/
+    commands/       # Command handlers (inbox, task, tasks)
+    index.ts        # Entry point
+    main.ts         # Command router
+    run-and-print.ts
+  jxa/
+    scripts/        # JXA script generators
+    helpers.ts      # Shared JXA helpers and wrapJxaScript()
+    runner.ts       # osascript execution via execFile
+    parse.ts        # JSON response parser
+    types.ts        # JXA-related type definitions
+  types/
+    index.ts        # Shared type definitions
+tests/
+  unit/             # Unit tests
+  integration/      # Integration tests (requires OmniFocus)
 ```
 
-### Build Process
-
-`build.sh` concatenates `lib/helpers.js` with each script in `scripts/` to produce standalone files in `dist/`. Each built script includes all helper functions and can run independently via `osascript -l JavaScript`.
+### Build & Test
 
 ```bash
-./build.sh
-# => Built 7 scripts to dist/
+npm run build          # Bundle with Vite Plus (vp pack)
+npm run dev            # Development mode
+npm run check          # Lint and type check
+npm run fix            # Auto-fix lint issues
+npm run test           # Run tests in watch mode
+npm run test:run       # Run tests once
+npm run test:integration  # Run integration tests (requires OmniFocus)
 ```
 
 ### Adding a New Script
 
-1. Create a new `.js` file in `scripts/` (e.g., `scripts/of-task-defer.js`)
-2. Use helper functions from `lib/helpers.js` directly (they will be prepended at build time)
-3. Run `./build.sh` to generate the combined script in `dist/`
+1. Create a new `.ts` file in `src/jxa/scripts/` for the JXA logic
+2. Create a command handler in `src/cli/commands/` if needed
+3. Register the command in `src/cli/main.ts`
+4. Add tests in `tests/`
