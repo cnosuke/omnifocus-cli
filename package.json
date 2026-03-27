@@ -1,0 +1,24 @@
+{
+  "name": "@cnosuke/omnifocus-cli",
+  "version": "1.0.0",
+  "type": "module",
+  "bin": {
+    "of": "./dist/index.mjs"
+  },
+  "scripts": {
+    "build": "vp pack",
+    "dev": "vp dev",
+    "check": "vp check",
+    "fix": "vp check --fix",
+    "test": "vp test",
+    "test:run": "vp test run",
+    "test:integration": "OF_INTEGRATION=1 vp test run tests/integration"
+  },
+  "packageManager": "npm@10.9.2",
+  "devDependencies": {
+    "vite-plus": "^0.1"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
