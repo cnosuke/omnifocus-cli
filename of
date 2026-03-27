@@ -1,0 +1,463 @@
+#!/bin/bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+if [[ -f "$SCRIPT_DIR/of-inbox-list.js" ]]; then
+  DIST_DIR="$SCRIPT_DIR"
+else
+  DIST_DIR="$SCRIPT_DIR/dist"
+fi
+
+json_escape() {
+  local s="$1"
+  s="${s//\\/\\\\}"
+  s="${s//\"/\\\"}"
+  s="${s//$'\n'/\\n}"
+  s="${s//$'\t'/\\t}"
+  printf '%s' "$s"
+}
+
+require_integer() {
+  local flag="$1" value="$2"
+  if ! [[ "$value" =~ ^[0-9]+$ ]]; then
+    echo "Error: $flag must be a positive integer, got '$value'" >&2
+    return 1
+  fi
+}
+
+run_script() {
+  local output
+  output=$(osascript -l JavaScript "$DIST_DIR/$1" "${@:2}")
+  local rc=$?
+  if [[ $rc -ne 0 ]]; then
+    echo "$output" >&2
+    return $rc
+  fi
+  if command -v jq &>/dev/null; then
+    local success
+    success=$(echo "$output" | jq -r '.success // empty' 2>/dev/null)
+    echo "$output" | jq .
+    [[ "$success" == "false" ]] && return 1
+  else
+    echo "$output"
+    [[ "$output" == *'"success":false'* ]] && return 1
+  fi
+  return 0
+}
+
+show_help() {
+  cat <<'EOF'
+of - OmniFocus CLI
+
+Usage: of <command> [arguments]
+
+Commands:
+  inbox list [--detailed]              List inbox tasks
+  task add <name> [options]            Add a new task
+  task complete <id>                   Mark task as complete
+  task search <keyword> [options]      Search tasks
+  tasks flagged                        List flagged tasks
+  tasks overdue                        List overdue tasks
+  tasks today                          List tasks due today
+
+Run 'of <command> --help' for command details.
+EOF
+}
+
+# --- inbox ---
+
+cmd_inbox_list() {
+  local mode="brief"
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --detailed) mode="detailed"; shift ;;
+      --help|-h)
+        cat <<'EOF'
+Usage: of inbox list [--detailed]
+
+List tasks in the OmniFocus inbox.
+
+Options:
+  --detailed    Show full task details (default: brief)
+
+Examples:
+  of inbox list
+  of inbox list --detailed
+EOF
+        return 0
+        ;;
+      *)
+        echo "Error: Unknown flag '$1'" >&2
+        echo "Run 'of inbox list --help' for usage." >&2
+        return 1
+        ;;
+    esac
+  done
+
+  run_script of-inbox-list.js "$mode"
+}
+
+cmd_inbox() {
+  local sub="${1:-}"
+  case "$sub" in
+    list) shift; cmd_inbox_list "$@" ;;
+    --help|-h)
+      cat <<'EOF'
+Usage: of inbox <subcommand>
+
+Subcommands:
+  list [--detailed]    List inbox tasks
+
+Run 'of inbox list --help' for details.
+EOF
+      ;;
+    *)
+      echo "Error: Unknown inbox subcommand '${sub:-}'" >&2
+      echo "Run 'of inbox --help' for usage." >&2
+      return 1
+      ;;
+  esac
+}
+
+# --- task ---
+
+cmd_task_add() {
+  local name=""
+  local project=""
+  local due=""
+  local defer=""
+  local flagged="false"
+  local note=""
+  local estimate=""
+  local tags=()
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --project) project="$2"; shift 2 ;;
+      --due) due="$2"; shift 2 ;;
+      --defer) defer="$2"; shift 2 ;;
+      --flagged) flagged="true"; shift ;;
+      --note) note="$2"; shift 2 ;;
+      --estimate) require_integer "--estimate" "$2" || return 1; estimate="$2"; shift 2 ;;
+      --tag) tags+=("$2"); shift 2 ;;
+      --help|-h)
+        cat <<'EOF'
+Usage: of task add <name> [options]
+
+Add a new task to OmniFocus.
+
+Arguments:
+  <name>                  Task name (required)
+
+Options:
+  --project <name>        Assign to project
+  --due <date>            Due date (e.g. "2026-03-15", "tomorrow")
+  --defer <date>          Defer date
+  --flagged               Mark as flagged
+  --note <text>           Add a note
+  --estimate <minutes>    Estimated duration in minutes
+  --tag <name>            Add a tag (repeatable)
+
+Examples:
+  of task add "Buy groceries"
+  of task add "Write report" --project "Work" --due "2026-03-15" --flagged
+  of task add "Read book" --tag "personal" --tag "reading" --estimate 60
+EOF
+        return 0
+        ;;
+      -*)
+        echo "Error: Unknown flag '$1'" >&2
+        echo "Run 'of task add --help' for usage." >&2
+        return 1
+        ;;
+      *)
+        if [[ -z "$name" ]]; then
+          name="$1"; shift
+        else
+          echo "Error: Unexpected argument '$1'" >&2
+          echo "Run 'of task add --help' for usage." >&2
+          return 1
+        fi
+        ;;
+    esac
+  done
+
+  if [[ -z "$name" ]]; then
+    echo "Error: Task name is required." >&2
+    echo "Run 'of task add --help' for usage." >&2
+    return 1
+  fi
+
+  local json="{"
+  [[ -n "$project" ]] && json+="\"project\":\"$(json_escape "$project")\","
+  [[ -n "$due" ]] && json+="\"dueDate\":\"$(json_escape "$due")\","
+  [[ -n "$defer" ]] && json+="\"deferDate\":\"$(json_escape "$defer")\","
+  [[ "$flagged" == "true" ]] && json+="\"flagged\":true,"
+  [[ -n "$note" ]] && json+="\"note\":\"$(json_escape "$note")\","
+  [[ -n "$estimate" ]] && json+="\"estimatedMinutes\":$estimate,"
+  if [[ ${#tags[@]} -gt 0 ]]; then
+    json+="\"tags\":["
+    for t in "${tags[@]}"; do json+="\"$(json_escape "$t")\","; done
+    json="${json%,}],"
+  fi
+  json="${json%,}}"
+
+  run_script of-task-add.js "$name" "$json"
+}
+
+cmd_task_complete() {
+  local task_id=""
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --help|-h)
+        cat <<'EOF'
+Usage: of task complete <id>
+
+Mark a task as complete.
+
+Arguments:
+  <id>    Task ID (required)
+
+Examples:
+  of task complete "nPaAZJbFJcj"
+EOF
+        return 0
+        ;;
+      -*)
+        echo "Error: Unknown flag '$1'" >&2
+        echo "Run 'of task complete --help' for usage." >&2
+        return 1
+        ;;
+      *)
+        if [[ -z "$task_id" ]]; then
+          task_id="$1"; shift
+        else
+          echo "Error: Unexpected argument '$1'" >&2
+          echo "Run 'of task complete --help' for usage." >&2
+          return 1
+        fi
+        ;;
+    esac
+  done
+
+  if [[ -z "$task_id" ]]; then
+    echo "Error: Task ID is required." >&2
+    echo "Run 'of task complete --help' for usage." >&2
+    return 1
+  fi
+
+  run_script of-task-complete.js "$task_id"
+}
+
+cmd_task_search() {
+  local keyword=""
+  local project=""
+  local flagged="false"
+  local limit=""
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --project) project="$2"; shift 2 ;;
+      --flagged) flagged="true"; shift ;;
+      --limit) require_integer "--limit" "$2" || return 1; limit="$2"; shift 2 ;;
+      --help|-h)
+        cat <<'EOF'
+Usage: of task search <keyword> [options]
+
+Search for tasks by keyword.
+
+Arguments:
+  <keyword>               Search keyword (required)
+
+Options:
+  --project <name>        Filter by project
+  --flagged               Only flagged tasks
+  --limit <n>             Max number of results
+
+Examples:
+  of task search "report"
+  of task search "meeting" --project "Work" --flagged --limit 10
+EOF
+        return 0
+        ;;
+      -*)
+        echo "Error: Unknown flag '$1'" >&2
+        echo "Run 'of task search --help' for usage." >&2
+        return 1
+        ;;
+      *)
+        if [[ -z "$keyword" ]]; then
+          keyword="$1"; shift
+        else
+          echo "Error: Unexpected argument '$1'" >&2
+          echo "Run 'of task search --help' for usage." >&2
+          return 1
+        fi
+        ;;
+    esac
+  done
+
+  if [[ -z "$keyword" ]]; then
+    echo "Error: Search keyword is required." >&2
+    echo "Run 'of task search --help' for usage." >&2
+    return 1
+  fi
+
+  local json="{"
+  [[ -n "$project" ]] && json+="\"project\":\"$(json_escape "$project")\","
+  [[ "$flagged" == "true" ]] && json+="\"flagged\":true,"
+  [[ -n "$limit" ]] && json+="\"limit\":$limit,"
+  json="${json%,}}"
+
+  run_script of-task-search.js "$keyword" "$json"
+}
+
+cmd_task() {
+  local sub="${1:-}"
+  case "$sub" in
+    add) shift; cmd_task_add "$@" ;;
+    complete) shift; cmd_task_complete "$@" ;;
+    search) shift; cmd_task_search "$@" ;;
+    --help|-h)
+      cat <<'EOF'
+Usage: of task <subcommand> [arguments]
+
+Subcommands:
+  add <name> [options]            Add a new task
+  complete <id>                   Mark task as complete
+  search <keyword> [options]      Search tasks
+
+Run 'of task <subcommand> --help' for details.
+EOF
+      ;;
+    *)
+      echo "Error: Unknown task subcommand '${sub:-}'" >&2
+      echo "Run 'of task --help' for usage." >&2
+      return 1
+      ;;
+  esac
+}
+
+# --- tasks ---
+
+cmd_tasks_flagged() {
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --help|-h)
+        cat <<'EOF'
+Usage: of tasks flagged
+
+List all flagged tasks.
+
+Examples:
+  of tasks flagged
+EOF
+        return 0
+        ;;
+      *)
+        echo "Error: Unknown argument '$1'" >&2
+        echo "Run 'of tasks flagged --help' for usage." >&2
+        return 1
+        ;;
+    esac
+  done
+
+  run_script of-tasks-flagged.js
+}
+
+cmd_tasks_overdue() {
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --help|-h)
+        cat <<'EOF'
+Usage: of tasks overdue
+
+List all overdue tasks.
+
+Examples:
+  of tasks overdue
+EOF
+        return 0
+        ;;
+      *)
+        echo "Error: Unknown argument '$1'" >&2
+        echo "Run 'of tasks overdue --help' for usage." >&2
+        return 1
+        ;;
+    esac
+  done
+
+  run_script of-tasks-overdue.js
+}
+
+cmd_tasks_today() {
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --help|-h)
+        cat <<'EOF'
+Usage: of tasks today
+
+List tasks due today.
+
+Examples:
+  of tasks today
+EOF
+        return 0
+        ;;
+      *)
+        echo "Error: Unknown argument '$1'" >&2
+        echo "Run 'of tasks today --help' for usage." >&2
+        return 1
+        ;;
+    esac
+  done
+
+  run_script of-tasks-today.js
+}
+
+cmd_tasks() {
+  local sub="${1:-}"
+  case "$sub" in
+    flagged) shift; cmd_tasks_flagged "$@" ;;
+    overdue) shift; cmd_tasks_overdue "$@" ;;
+    today) shift; cmd_tasks_today "$@" ;;
+    --help|-h)
+      cat <<'EOF'
+Usage: of tasks <subcommand>
+
+Subcommands:
+  flagged    List flagged tasks
+  overdue    List overdue tasks
+  today      List tasks due today
+
+Run 'of tasks <subcommand> --help' for details.
+EOF
+      ;;
+    *)
+      echo "Error: Unknown tasks subcommand '${sub:-}'" >&2
+      echo "Run 'of tasks --help' for usage." >&2
+      return 1
+      ;;
+  esac
+}
+
+# --- main ---
+
+main() {
+  local cmd="${1:-}"
+  case "$cmd" in
+    inbox) shift; cmd_inbox "$@" ;;
+    task) shift; cmd_task "$@" ;;
+    tasks) shift; cmd_tasks "$@" ;;
+    help|--help|-h|"") show_help ;;
+    *)
+      echo "Error: Unknown command '$cmd'" >&2
+      show_help >&2
+      exit 1
+      ;;
+  esac
+}
+
+main "$@"
