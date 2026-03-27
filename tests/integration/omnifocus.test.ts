@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { runJxa } from '../../src/jxa/runner.js';
 import { buildInboxListScript } from '../../src/jxa/scripts/inbox-list.js';
-import { buildTasksFlaggedScript } from '../../src/jxa/scripts/tasks-flagged.js';
-import { buildTasksOverdueScript } from '../../src/jxa/scripts/tasks-overdue.js';
-import { buildTasksTodayScript } from '../../src/jxa/scripts/tasks-today.js';
+import {
+  buildTasksFlaggedScript,
+  buildTasksOverdueScript,
+  buildTasksTodayScript,
+} from '../../src/jxa/scripts/tasks-filter.js';
 
 const SKIP = !process.env['OF_INTEGRATION'] || process.platform !== 'darwin';
 

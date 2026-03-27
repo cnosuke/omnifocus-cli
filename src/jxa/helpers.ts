@@ -82,3 +82,19 @@ function findTask(doc, taskId) {
   return null;
 }
 `;
+
+export function wrapJxaScript(body: string): string {
+  return `${JXA_HELPERS}
+(function() {
+  try {
+    if (!isOmniFocusRunning()) {
+      return JSON.stringify({ success: false, error: "OmniFocus is not running" });
+    }
+    var app = getApp();
+    var doc = getDoc(app);
+${body}
+  } catch (e) {
+    return JSON.stringify({ success: false, error: e.message });
+  }
+})();`;
+}

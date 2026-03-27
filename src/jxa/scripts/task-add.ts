@@ -1,18 +1,11 @@
-import { JXA_HELPERS } from '../helpers.js';
+import { wrapJxaScript } from '../helpers.js';
 import type { JxaRunnerOptions } from '../types.js';
 import type { TaskAddOptions } from '../../types/index.js';
 
-const SCRIPT = `${JXA_HELPERS}
-(function() {
-  try {
-    if (!isOmniFocusRunning()) {
-      return JSON.stringify({ success: false, error: "OmniFocus is not running" });
-    }
+const SCRIPT = wrapJxaScript(`
     var argv = ObjC.unwrap($.NSProcessInfo.processInfo.arguments);
     var taskName = argv[argv.length - 2];
     var opts = JSON.parse(argv[argv.length - 1]);
-    var app = getApp();
-    var doc = getDoc(app);
     var task;
 
     if (opts.project) {
@@ -53,11 +46,7 @@ const SCRIPT = `${JXA_HELPERS}
       }
     }
 
-    return JSON.stringify({ success: true, task: formatTaskBrief(task) });
-  } catch (e) {
-    return JSON.stringify({ success: false, error: e.message });
-  }
-})();`;
+    return JSON.stringify({ success: true, task: formatTaskBrief(task) });`);
 
 export function buildTaskAddArgs(
   name: string,

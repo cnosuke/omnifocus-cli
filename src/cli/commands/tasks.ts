@@ -1,8 +1,10 @@
 import { runJxa } from '../../jxa/runner.js';
 import { parseJxaOutput } from '../../jxa/parse.js';
-import { buildTasksFlaggedScript } from '../../jxa/scripts/tasks-flagged.js';
-import { buildTasksOverdueScript } from '../../jxa/scripts/tasks-overdue.js';
-import { buildTasksTodayScript } from '../../jxa/scripts/tasks-today.js';
+import {
+  buildTasksFlaggedScript,
+  buildTasksOverdueScript,
+  buildTasksTodayScript,
+} from '../../jxa/scripts/tasks-filter.js';
 import type { TaskBrief } from '../../types/index.js';
 
 async function runSimpleTasksCommand(
