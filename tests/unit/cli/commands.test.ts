@@ -224,6 +224,12 @@ describe('perspectives commands', () => {
     expect(spy).toHaveBeenCalledWith(expect.stringContaining('Subcommands'));
   });
 
+  it('perspectives list throws on unknown argument', async () => {
+    await expect(runPerspectives(['list', '--badarg'])).rejects.toThrow(
+      "Unknown argument '--badarg'",
+    );
+  });
+
   it('perspectives throws on unknown subcommand', () => {
     expect(() => runPerspectives(['badcmd'])).toThrow("Unknown perspectives subcommand 'badcmd'");
   });

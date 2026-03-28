@@ -158,16 +158,16 @@ All commands return JSON. If `jq` is installed, output is automatically pretty-p
 
 **Brief output** (`formatProjectBrief`):
 
-| Field        | Type    | Description                   |
-| ------------ | ------- | ----------------------------- |
-| `id`         | string  | OmniFocus project ID          |
-| `name`       | string  | Project name                  |
-| `status`     | string  | Status (e.g. "active status") |
-| `dueDate`    | string? | ISO 8601 due date             |
-| `deferDate`  | string? | ISO 8601 defer date           |
-| `flagged`    | boolean | Flagged status                |
-| `taskCount`  | number  | Number of remaining tasks     |
-| `folderName` | string? | Containing folder name        |
+| Field        | Type    | Description                             |
+| ------------ | ------- | --------------------------------------- |
+| `id`         | string  | OmniFocus project ID                    |
+| `name`       | string  | Project name                            |
+| `status`     | string  | Status (active, on-hold, done, dropped) |
+| `dueDate`    | string? | ISO 8601 due date                       |
+| `deferDate`  | string? | ISO 8601 defer date                     |
+| `flagged`    | boolean | Flagged status                          |
+| `taskCount`  | number  | Number of remaining tasks               |
+| `folderName` | string? | Containing folder name                  |
 
 **Detailed output** adds (`formatProjectDetail`):
 
