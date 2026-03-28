@@ -11,6 +11,23 @@ import {
   buildTasksOverdueScript,
   buildTasksTodayScript,
 } from '../../../src/jxa/scripts/tasks-filter.js';
+import { buildPerspectivesListScript } from '../../../src/jxa/scripts/perspectives-list.js';
+import {
+  PROJECTS_LIST_SCRIPT,
+  buildProjectsListArgs,
+} from '../../../src/jxa/scripts/projects-list.js';
+import {
+  PROJECTS_SHOW_SCRIPT,
+  buildProjectsShowArgs,
+} from '../../../src/jxa/scripts/projects-show.js';
+import {
+  PROJECTS_ADD_SCRIPT,
+  buildProjectsAddArgs,
+} from '../../../src/jxa/scripts/projects-add.js';
+import {
+  PROJECTS_STATUS_SCRIPT,
+  buildProjectsStatusArgs,
+} from '../../../src/jxa/scripts/projects-status.js';
 
 describe('buildInboxListScript', () => {
   it('generates brief mode script', () => {
@@ -129,5 +146,96 @@ describe('buildTasksTodayScript', () => {
     const script = buildTasksTodayScript();
     expect(script).toContain('endOfToday');
     expect(script).toContain('due <= endOfToday');
+  });
+});
+
+describe('buildPerspectivesListScript', () => {
+  it('generates script that reads perspectiveNames', () => {
+    const script = buildPerspectivesListScript();
+    expect(script).toContain('perspectiveNames');
+    expect(script).toContain('isOmniFocusRunning');
+  });
+
+  it('includes JXA helpers', () => {
+    const script = buildPerspectivesListScript();
+    expect(script).toContain('ObjC.import');
+    expect(script).toContain('Application("OmniFocus")');
+  });
+});
+
+describe('PROJECTS_LIST_SCRIPT + buildProjectsListArgs', () => {
+  it('script reads options from NSProcessInfo', () => {
+    expect(PROJECTS_LIST_SCRIPT).toContain('ObjC.unwrap($.NSProcessInfo.processInfo.arguments)');
+    expect(PROJECTS_LIST_SCRIPT).toContain('flattenedProjects');
+    expect(PROJECTS_LIST_SCRIPT).toContain('formatProjectBrief');
+  });
+
+  it('builds args with no filters', () => {
+    const opts = buildProjectsListArgs({});
+    expect(opts.args).toEqual(['{}']);
+  });
+
+  it('builds args with status filter', () => {
+    const opts = buildProjectsListArgs({ status: 'active' });
+    const parsed = JSON.parse(opts.args![0]);
+    expect(parsed.status).toBe('active status');
+  });
+
+  it('builds args with folder filter', () => {
+    const opts = buildProjectsListArgs({ folder: 'Work' });
+    const parsed = JSON.parse(opts.args![0]);
+    expect(parsed.folder).toBe('Work');
+  });
+
+  it('throws on invalid status', () => {
+    expect(() => buildProjectsListArgs({ status: 'invalid' })).toThrow("Invalid status 'invalid'");
+  });
+});
+
+describe('PROJECTS_SHOW_SCRIPT + buildProjectsShowArgs', () => {
+  it('script reads options from NSProcessInfo', () => {
+    expect(PROJECTS_SHOW_SCRIPT).toContain('ObjC.unwrap($.NSProcessInfo.processInfo.arguments)');
+    expect(PROJECTS_SHOW_SCRIPT).toContain('findProject');
+  });
+
+  it('builds args with name and flags', () => {
+    const opts = buildProjectsShowArgs({ name: 'Test', detailed: true, includeTasks: true });
+    const parsed = JSON.parse(opts.args![0]);
+    expect(parsed.name).toBe('Test');
+    expect(parsed.detailed).toBe(true);
+    expect(parsed.includeTasks).toBe(true);
+  });
+});
+
+describe('PROJECTS_ADD_SCRIPT + buildProjectsAddArgs', () => {
+  it('script reads name and options from NSProcessInfo', () => {
+    expect(PROJECTS_ADD_SCRIPT).toContain('ObjC.unwrap($.NSProcessInfo.processInfo.arguments)');
+    expect(PROJECTS_ADD_SCRIPT).toContain('argv[argv.length - 2]');
+    expect(PROJECTS_ADD_SCRIPT).toContain('app.Project');
+  });
+
+  it('builds args with name and options', () => {
+    const opts = buildProjectsAddArgs('New Project', { dueDate: 'tomorrow', flagged: true });
+    expect(opts.args![0]).toBe('New Project');
+    const parsed = JSON.parse(opts.args![1]);
+    expect(parsed.dueDate).toBe('tomorrow');
+    expect(parsed.flagged).toBe(true);
+  });
+});
+
+describe('PROJECTS_STATUS_SCRIPT + buildProjectsStatusArgs', () => {
+  it('script reads name and status from NSProcessInfo', () => {
+    expect(PROJECTS_STATUS_SCRIPT).toContain('ObjC.unwrap($.NSProcessInfo.processInfo.arguments)');
+    expect(PROJECTS_STATUS_SCRIPT).toContain('findProject');
+    expect(PROJECTS_STATUS_SCRIPT).toContain('project.status');
+  });
+
+  it('builds args with mapped status', () => {
+    const opts = buildProjectsStatusArgs('My Project', 'on-hold');
+    expect(opts.args).toEqual(['My Project', 'on hold status']);
+  });
+
+  it('throws on invalid status', () => {
+    expect(() => buildProjectsStatusArgs('Test', 'invalid')).toThrow("Invalid status 'invalid'");
   });
 });

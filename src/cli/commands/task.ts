@@ -1,39 +1,9 @@
 import { runAndPrint } from '../run-and-print.js';
+import { requireFlagValue, requireInteger, requirePositionalArg } from '../arg-utils.js';
 import { TASK_ADD_SCRIPT, buildTaskAddArgs } from '../../jxa/scripts/task-add.js';
 import { TASK_COMPLETE_SCRIPT, buildTaskCompleteArgs } from '../../jxa/scripts/task-complete.js';
 import { TASK_SEARCH_SCRIPT, buildTaskSearchArgs } from '../../jxa/scripts/task-search.js';
 import type { TaskAddOptions, TaskSearchOptions } from '../../types/index.js';
-
-function requireFlagValue(flag: string, args: string[], index: number): string {
-  const value = args[index];
-  if (value === undefined) {
-    throw new Error(`${flag} requires a value`);
-  }
-  return value;
-}
-
-function requireInteger(flag: string, value: string): number {
-  const n = Number(value);
-  if (!Number.isInteger(n) || n < 0) {
-    throw new Error(`${flag} must be a positive integer, got '${value}'`);
-  }
-  return n;
-}
-
-function requirePositionalArg(
-  args: string[],
-  current: string,
-  existing: string,
-  helpCommand: string,
-): string {
-  if (current.startsWith('-')) {
-    throw new Error(`Unknown flag '${current}'. Run '${helpCommand}' for usage.`);
-  }
-  if (existing) {
-    throw new Error(`Unexpected argument '${current}'. Run '${helpCommand}' for usage.`);
-  }
-  return current;
-}
 
 export async function taskAdd(args: string[]): Promise<void> {
   let name = '';

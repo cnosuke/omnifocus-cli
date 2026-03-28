@@ -83,6 +83,58 @@ function findTask(doc, taskId) {
   }
   return null;
 }
+
+function findFolder(doc, name) {
+  var folders = doc.flattenedFolders();
+  for (var i = 0; i < folders.length; i++) {
+    if (folders[i].name() === name) return folders[i];
+  }
+  return null;
+}
+
+function normalizeProjectStatus(rawStatus) {
+  var map = {"active status":"active", "on hold status":"on-hold", "done status":"done", "dropped status":"dropped"};
+  return map[String(rawStatus)] || String(rawStatus);
+}
+
+function countRemainingTasks(project) {
+  var tasks = project.flattenedTasks();
+  var count = 0;
+  for (var i = 0; i < tasks.length; i++) {
+    if (!tasks[i].completed()) count++;
+  }
+  return count;
+}
+
+function formatProjectBrief(project) {
+  var folder = project.parentFolder();
+  return {
+    id: project.id(),
+    name: project.name(),
+    status: normalizeProjectStatus(project.status()),
+    dueDate: project.dueDate() ? project.dueDate().toISOString() : null,
+    deferDate: project.deferDate() ? project.deferDate().toISOString() : null,
+    flagged: project.flagged(),
+    taskCount: countRemainingTasks(project),
+    folderName: folder ? folder.name() : null
+  };
+}
+
+function formatProjectDetail(project) {
+  var brief = formatProjectBrief(project);
+  var projectTags = project.tags();
+  var tagNames = [];
+  for (var i = 0; i < projectTags.length; i++) {
+    tagNames.push(projectTags[i].name());
+  }
+  return Object.assign(brief, {
+    note: project.note() || "",
+    completionDate: project.completionDate() ? project.completionDate().toISOString() : null,
+    estimatedMinutes: project.estimatedMinutes(),
+    sequential: project.sequential(),
+    tags: tagNames
+  });
+}
 `;
 
 export function wrapJxaScript(body: string): string {
