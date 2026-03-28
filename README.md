@@ -56,6 +56,35 @@ of tasks overdue                 # Overdue tasks
 of tasks flagged                 # Flagged tasks
 ```
 
+### Perspectives
+
+```bash
+of perspectives list             # List all perspective names
+```
+
+### Projects
+
+```bash
+# List projects
+of projects list                          # All projects
+of projects list --status active          # Filter by status (active, on-hold, done, dropped)
+of projects list --folder "Work"          # Filter by folder
+
+# Show project details
+of projects show "My Project"             # Brief info
+of projects show "My Project" --detailed  # Full details
+of projects show "My Project" --tasks     # Include tasks
+
+# Create a project
+of projects add "New Project"
+of projects add "Work Project" --folder "Work" --due "next week" --sequential
+of projects add "Side Project" --tag dev --tag personal --flagged
+
+# Change project status
+of projects status "Old Project" done
+of projects status "Paused Project" on-hold
+```
+
 ## Date Formats
 
 | Format      | Example             | Description               |
@@ -125,6 +154,32 @@ All commands return JSON. If `jq` is installed, output is automatically pretty-p
 | `tags`             | string[] | Tag names                |
 | `projectName`      | string?  | Containing project name  |
 
+## Project Fields
+
+**Brief output** (`formatProjectBrief`):
+
+| Field        | Type    | Description                   |
+| ------------ | ------- | ----------------------------- |
+| `id`         | string  | OmniFocus project ID          |
+| `name`       | string  | Project name                  |
+| `status`     | string  | Status (e.g. "active status") |
+| `dueDate`    | string? | ISO 8601 due date             |
+| `deferDate`  | string? | ISO 8601 defer date           |
+| `flagged`    | boolean | Flagged status                |
+| `taskCount`  | number  | Number of remaining tasks     |
+| `folderName` | string? | Containing folder name        |
+
+**Detailed output** adds (`formatProjectDetail`):
+
+| Field                | Type     | Description                  |
+| -------------------- | -------- | ---------------------------- |
+| `note`               | string   | Project note                 |
+| `completionDate`     | string?  | ISO 8601 completion date     |
+| `estimatedMinutes`   | number?  | Time estimate in minutes     |
+| `sequential`         | boolean  | Whether tasks are sequential |
+| `tags`               | string[] | Tag names                    |
+| `remainingTaskCount` | number   | Number of incomplete tasks   |
+
 ## Development
 
 ### Directory Structure
@@ -132,7 +187,8 @@ All commands return JSON. If `jq` is installed, output is automatically pretty-p
 ```
 src/
   cli/
-    commands/       # Command handlers (inbox, task, tasks)
+    commands/       # Command handlers (inbox, task, tasks, perspectives, projects)
+    arg-utils.ts    # Shared argument parsing helpers
     index.ts        # Entry point
     main.ts         # Command router
     run-and-print.ts

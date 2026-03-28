@@ -7,6 +7,8 @@ vi.mock('../../../src/jxa/runner.js', () => ({
 import { runInbox } from '../../../src/cli/commands/inbox.js';
 import { runTask } from '../../../src/cli/commands/task.js';
 import { runTasks } from '../../../src/cli/commands/tasks.js';
+import { runPerspectives } from '../../../src/cli/commands/perspectives.js';
+import { runProjects } from '../../../src/cli/commands/projects.js';
 import { runJxa } from '../../../src/jxa/runner.js';
 
 const mockRunJxa = vi.mocked(runJxa);
@@ -196,6 +198,133 @@ describe('tasks commands', () => {
   it('tasks flagged throws on error response', async () => {
     mockJxaResult({ success: false, error: 'OmniFocus is not running' });
     await expect(runTasks(['flagged'])).rejects.toThrow('OmniFocus is not running');
+  });
+});
+
+describe('perspectives commands', () => {
+  it('perspectives list calls runJxa', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    mockJxaResult({ success: true, perspectiveNames: ['Inbox', 'Flagged'], totalCount: 2 });
+
+    await runPerspectives(['list']);
+    expect(mockRunJxa).toHaveBeenCalledOnce();
+    const script = mockRunJxa.mock.calls[0][0];
+    expect(script).toContain('perspectiveNames');
+  });
+
+  it('perspectives list prints help with --help', async () => {
+    const spy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    await runPerspectives(['list', '--help']);
+    expect(spy).toHaveBeenCalledWith(expect.stringContaining('perspectives list'));
+  });
+
+  it('perspectives --help prints subcommands', async () => {
+    const spy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    await runPerspectives(['--help']);
+    expect(spy).toHaveBeenCalledWith(expect.stringContaining('Subcommands'));
+  });
+
+  it('perspectives throws on unknown subcommand', () => {
+    expect(() => runPerspectives(['badcmd'])).toThrow("Unknown perspectives subcommand 'badcmd'");
+  });
+});
+
+describe('projects commands', () => {
+  it('projects list calls runJxa without filters', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    mockJxaResult({ success: true, projects: [], totalCount: 0 });
+
+    await runProjects(['list']);
+    expect(mockRunJxa).toHaveBeenCalledOnce();
+    const [_script, options] = mockRunJxa.mock.calls[0];
+    const opts = JSON.parse(options!.args![0]);
+    expect(opts).toEqual({});
+  });
+
+  it('projects list with --status and --folder', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    mockJxaResult({ success: true, projects: [], totalCount: 0 });
+
+    await runProjects(['list', '--status', 'active', '--folder', 'Work']);
+    const [_script, options] = mockRunJxa.mock.calls[0];
+    const opts = JSON.parse(options!.args![0]);
+    expect(opts.status).toBe('active status');
+    expect(opts.folder).toBe('Work');
+  });
+
+  it('projects show requires name', async () => {
+    await expect(runProjects(['show'])).rejects.toThrow('Project name is required');
+  });
+
+  it('projects show passes name and flags', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    mockJxaResult({ success: true, project: { id: '1', name: 'Test' } });
+
+    await runProjects(['show', 'My Project', '--detailed', '--tasks']);
+    const [_script, options] = mockRunJxa.mock.calls[0];
+    const opts = JSON.parse(options!.args![0]);
+    expect(opts.name).toBe('My Project');
+    expect(opts.detailed).toBe(true);
+    expect(opts.includeTasks).toBe(true);
+  });
+
+  it('projects add requires name', async () => {
+    await expect(runProjects(['add'])).rejects.toThrow('Project name is required');
+  });
+
+  it('projects add passes name and options', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    mockJxaResult({ success: true, project: { id: '1', name: 'New' } });
+
+    await runProjects(['add', 'New Project', '--due', 'tomorrow', '--flagged', '--folder', 'Work']);
+    const [_script, options] = mockRunJxa.mock.calls[0];
+    expect(options!.args![0]).toBe('New Project');
+    const opts = JSON.parse(options!.args![1]);
+    expect(opts.dueDate).toBe('tomorrow');
+    expect(opts.flagged).toBe(true);
+    expect(opts.folder).toBe('Work');
+  });
+
+  it('projects add with tags and sequential', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    mockJxaResult({ success: true, project: { id: '1', name: 'Test' } });
+
+    await runProjects(['add', 'Test', '--tag', 'work', '--tag', 'urgent', '--sequential']);
+    const [_script, options] = mockRunJxa.mock.calls[0];
+    const opts = JSON.parse(options!.args![1]);
+    expect(opts.tags).toEqual(['work', 'urgent']);
+    expect(opts.sequential).toBe(true);
+  });
+
+  it('projects status requires name and status', async () => {
+    await expect(runProjects(['status'])).rejects.toThrow('Project name is required');
+    await expect(runProjects(['status', 'My Project'])).rejects.toThrow('Status is required');
+  });
+
+  it('projects status validates status value', async () => {
+    await expect(runProjects(['status', 'My Project', 'invalid'])).rejects.toThrow(
+      "Invalid status 'invalid'",
+    );
+  });
+
+  it('projects status passes name and mapped status', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    mockJxaResult({ success: true, project: { id: '1', name: 'Test' } });
+
+    await runProjects(['status', 'My Project', 'on-hold']);
+    const [_script, options] = mockRunJxa.mock.calls[0];
+    expect(options!.args![0]).toBe('My Project');
+    expect(options!.args![1]).toBe('on hold status');
+  });
+
+  it('projects --help prints subcommands', async () => {
+    const spy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    await runProjects(['--help']);
+    expect(spy).toHaveBeenCalledWith(expect.stringContaining('Subcommands'));
+  });
+
+  it('projects throws on unknown subcommand', () => {
+    expect(() => runProjects(['badcmd'])).toThrow("Unknown projects subcommand 'badcmd'");
   });
 });
 

@@ -1,6 +1,8 @@
 import { runInbox } from './commands/inbox.js';
 import { runTask } from './commands/task.js';
 import { runTasks } from './commands/tasks.js';
+import { runPerspectives } from './commands/perspectives.js';
+import { runProjects } from './commands/projects.js';
 
 const HELP_TEXT = `of - OmniFocus CLI
 
@@ -14,6 +16,11 @@ Commands:
   tasks flagged                        List flagged tasks
   tasks overdue                        List overdue tasks
   tasks today                          List tasks due today
+  perspectives list                    List all perspectives
+  projects list [options]              List projects
+  projects show <name> [options]       Show project details
+  projects add <name> [options]        Create a new project
+  projects status <name> <status>      Change project status
 
 Run 'of <command> --help' for command details.`;
 
@@ -29,6 +36,12 @@ export async function main(args: string[]): Promise<void> {
       break;
     case 'tasks':
       await runTasks(args.slice(1));
+      break;
+    case 'perspectives':
+      await runPerspectives(args.slice(1));
+      break;
+    case 'projects':
+      await runProjects(args.slice(1));
       break;
     case 'help':
     case '--help':
