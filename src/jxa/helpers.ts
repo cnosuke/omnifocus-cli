@@ -132,8 +132,7 @@ function formatProjectDetail(project) {
     completionDate: project.completionDate() ? project.completionDate().toISOString() : null,
     estimatedMinutes: project.estimatedMinutes(),
     sequential: project.sequential(),
-    tags: tagNames,
-    remainingTaskCount: brief.taskCount
+    tags: tagNames
   });
 }
 `;

@@ -18,8 +18,7 @@ const SCRIPT = wrapJxaScript(`
       }
 
       if (opts.folder) {
-        var folder = null;
-        try { folder = p.parentFolder(); } catch(e) {}
+        var folder = p.parentFolder();
         var folderName = folder ? folder.name() : null;
         if (folderName !== opts.folder) continue;
       }
@@ -38,12 +37,11 @@ export interface ProjectsListOptions {
 }
 
 export function buildProjectsListArgs(options: ProjectsListOptions): JxaRunnerOptions {
-  const opts: Record<string, string | undefined> = {};
+  const opts: Record<string, string> = {};
 
   if (options.status) {
     opts.status = mapProjectStatus(options.status);
   }
-
   if (options.folder) {
     opts.folder = options.folder;
   }

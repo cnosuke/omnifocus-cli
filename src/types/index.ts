@@ -49,7 +49,6 @@ export interface ProjectDetail extends ProjectBrief {
   estimatedMinutes: number | null;
   sequential: boolean;
   tags: string[];
-  remainingTaskCount: number;
 }
 
 export interface ProjectAddOptions {

@@ -171,14 +171,13 @@ All commands return JSON. If `jq` is installed, output is automatically pretty-p
 
 **Detailed output** adds (`formatProjectDetail`):
 
-| Field                | Type     | Description                  |
-| -------------------- | -------- | ---------------------------- |
-| `note`               | string   | Project note                 |
-| `completionDate`     | string?  | ISO 8601 completion date     |
-| `estimatedMinutes`   | number?  | Time estimate in minutes     |
-| `sequential`         | boolean  | Whether tasks are sequential |
-| `tags`               | string[] | Tag names                    |
-| `remainingTaskCount` | number   | Number of incomplete tasks   |
+| Field              | Type     | Description                  |
+| ------------------ | -------- | ---------------------------- |
+| `note`             | string   | Project note                 |
+| `completionDate`   | string?  | ISO 8601 completion date     |
+| `estimatedMinutes` | number?  | Time estimate in minutes     |
+| `sequential`       | boolean  | Whether tasks are sequential |
+| `tags`             | string[] | Tag names                    |
 
 ## Development
 
