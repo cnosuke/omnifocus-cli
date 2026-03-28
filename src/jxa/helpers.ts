@@ -92,22 +92,30 @@ function findFolder(doc, name) {
   return null;
 }
 
-function formatProjectBrief(project) {
-  var folder = null;
-  try { folder = project.parentFolder(); } catch(e) {}
+function normalizeProjectStatus(rawStatus) {
+  var map = {"active status":"active", "on hold status":"on-hold", "done status":"done", "dropped status":"dropped"};
+  return map[String(rawStatus)] || String(rawStatus);
+}
+
+function countRemainingTasks(project) {
   var tasks = project.flattenedTasks();
-  var taskCount = 0;
+  var count = 0;
   for (var i = 0; i < tasks.length; i++) {
-    if (!tasks[i].completed()) taskCount++;
+    if (!tasks[i].completed()) count++;
   }
+  return count;
+}
+
+function formatProjectBrief(project) {
+  var folder = project.parentFolder();
   return {
     id: project.id(),
     name: project.name(),
-    status: String(project.status()),
+    status: normalizeProjectStatus(project.status()),
     dueDate: project.dueDate() ? project.dueDate().toISOString() : null,
     deferDate: project.deferDate() ? project.deferDate().toISOString() : null,
     flagged: project.flagged(),
-    taskCount: taskCount,
+    taskCount: countRemainingTasks(project),
     folderName: folder ? folder.name() : null
   };
 }
@@ -119,18 +127,13 @@ function formatProjectDetail(project) {
   for (var i = 0; i < projectTags.length; i++) {
     tagNames.push(projectTags[i].name());
   }
-  var tasks = project.flattenedTasks();
-  var remaining = 0;
-  for (var i = 0; i < tasks.length; i++) {
-    if (!tasks[i].completed()) remaining++;
-  }
   return Object.assign(brief, {
     note: project.note() || "",
     completionDate: project.completionDate() ? project.completionDate().toISOString() : null,
     estimatedMinutes: project.estimatedMinutes(),
     sequential: project.sequential(),
     tags: tagNames,
-    remainingTaskCount: remaining
+    remainingTaskCount: brief.taskCount
   });
 }
 `;

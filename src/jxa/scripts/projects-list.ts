@@ -1,5 +1,6 @@
 import { wrapJxaScript, DEFAULT_TASK_LIMIT } from '../helpers.js';
 import type { JxaRunnerOptions } from '../types.js';
+import { mapProjectStatus } from '../../types/index.js';
 
 const SCRIPT = wrapJxaScript(`
     var argv = ObjC.unwrap($.NSProcessInfo.processInfo.arguments);
@@ -36,24 +37,11 @@ export interface ProjectsListOptions {
   folder?: string;
 }
 
-const STATUS_MAP: Record<string, string> = {
-  active: 'active status',
-  'on-hold': 'on hold status',
-  done: 'done status',
-  dropped: 'dropped status',
-};
-
 export function buildProjectsListArgs(options: ProjectsListOptions): JxaRunnerOptions {
   const opts: Record<string, string | undefined> = {};
 
   if (options.status) {
-    const mapped = STATUS_MAP[options.status];
-    if (!mapped) {
-      throw new Error(
-        `Invalid status '${options.status}'. Must be one of: active, on-hold, done, dropped`,
-      );
-    }
-    opts.status = mapped;
+    opts.status = mapProjectStatus(options.status);
   }
 
   if (options.folder) {

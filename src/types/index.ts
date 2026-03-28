@@ -62,6 +62,25 @@ export interface ProjectAddOptions {
   folder?: string;
 }
 
+const PROJECT_STATUS_MAP: Record<string, string> = {
+  active: 'active status',
+  'on-hold': 'on hold status',
+  done: 'done status',
+  dropped: 'dropped status',
+};
+
+export const VALID_PROJECT_STATUSES = Object.keys(PROJECT_STATUS_MAP);
+
+export function mapProjectStatus(status: string): string {
+  const mapped = PROJECT_STATUS_MAP[status];
+  if (!mapped) {
+    throw new Error(
+      `Invalid status '${status}'. Must be one of: ${VALID_PROJECT_STATUSES.join(', ')}`,
+    );
+  }
+  return mapped;
+}
+
 export interface JxaSuccessResponse {
   success: true;
   task?: unknown;

@@ -7,9 +7,7 @@ import {
   PROJECTS_STATUS_SCRIPT,
   buildProjectsStatusArgs,
 } from '../../jxa/scripts/projects-status.js';
-import type { ProjectAddOptions } from '../../types/index.js';
-
-const VALID_STATUSES = ['active', 'on-hold', 'done', 'dropped'];
+import { VALID_PROJECT_STATUSES, type ProjectAddOptions } from '../../types/index.js';
 
 export async function projectsList(args: string[]): Promise<void> {
   let status: string | undefined;
@@ -143,8 +141,10 @@ export async function projectsStatus(args: string[]): Promise<void> {
   if (!status) {
     throw new Error("Status is required. Run 'of projects status --help' for usage.");
   }
-  if (!VALID_STATUSES.includes(status)) {
-    throw new Error(`Invalid status '${status}'. Must be one of: ${VALID_STATUSES.join(', ')}`);
+  if (!VALID_PROJECT_STATUSES.includes(status)) {
+    throw new Error(
+      `Invalid status '${status}'. Must be one of: ${VALID_PROJECT_STATUSES.join(', ')}`,
+    );
   }
 
   await runAndPrint(PROJECTS_STATUS_SCRIPT, buildProjectsStatusArgs(name, status));
@@ -198,7 +198,7 @@ Arguments:
 
 Options:
   --detailed           Show full project details
-  --tasks              Include project tasks
+  --tasks              Include remaining (incomplete) tasks
 
 Examples:
   of projects show "My Project"
