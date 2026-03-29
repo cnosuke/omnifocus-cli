@@ -1,0 +1,15 @@
+{
+  "name": "cnosuke-omnifocus-cli",
+  "owner": {
+    "name": "cnosuke",
+    "url": "https://github.com/cnosuke"
+  },
+  "plugins": [
+    {
+      "name": "omnifocus-cli",
+      "source": "./",
+      "description": "Manage OmniFocus tasks via CLI. Add, complete, search, list tasks with inbox, today, overdue, and flagged views. List perspectives and manage projects.",
+      "version": "1.0.0"
+    }
+  ]
+}
