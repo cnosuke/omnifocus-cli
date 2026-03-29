@@ -6,7 +6,7 @@
   },
   "type": "module",
   "scripts": {
-    "build": "vp pack",
+    "build": "vp pack && mkdir -p skills/omnifocus-cli/bin && cp dist/index.mjs skills/omnifocus-cli/bin/of && chmod +x skills/omnifocus-cli/bin/of",
     "dev": "vp dev",
     "check": "vp check",
     "fix": "vp check --fix",
