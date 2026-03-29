@@ -1,0 +1,12 @@
+{
+  "name": "omnifocus-cli",
+  "version": "1.0.0",
+  "description": "Manage OmniFocus tasks via CLI. Add, complete, search, list tasks with inbox, today, overdue, and flagged views. List perspectives and manage projects.",
+  "author": {
+    "name": "cnosuke",
+    "url": "https://github.com/cnosuke"
+  },
+  "repository": "https://github.com/cnosuke/omnifocus-cli",
+  "license": "MIT",
+  "keywords": ["omnifocus", "tasks", "productivity", "macos", "jxa"]
+}
