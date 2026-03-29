@@ -10,6 +10,17 @@ A CLI for OmniFocus automation built with TypeScript and JXA (JavaScript for Aut
 
 ## Setup
 
+### As a Claude Code Plugin
+
+```bash
+/plugin marketplace add cnosuke/omnifocus-cli
+/plugin install omnifocus-cli@cnosuke-omnifocus-cli
+```
+
+Once installed, Claude can manage your OmniFocus tasks directly.
+
+### As a standalone CLI
+
 ```bash
 npm install
 npm run build
