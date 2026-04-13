@@ -1,6 +1,6 @@
 {
   "name": "omnifocus-cli",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Manage OmniFocus tasks via CLI. Add, complete, search, list tasks with inbox, today, overdue, and flagged views. List perspectives and manage projects.",
   "author": {
     "name": "cnosuke",

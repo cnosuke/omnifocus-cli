@@ -15,6 +15,9 @@ The CLI is at `${CLAUDE_PLUGIN_ROOT}/skills/omnifocus-cli/bin/of`. All commands 
 
 ## How to Use
 
+**CRITICAL: All commands MUST be run with `dangerouslyDisableSandbox: true` in the Bash tool.**
+This CLI uses `osascript` (JXA) to communicate with OmniFocus, which requires macOS automation permissions that are blocked by the sandbox. Without disabling the sandbox, commands will fail with a misleading error ("アプリケーションは実行されていません") even when OmniFocus is running.
+
 Run commands via Bash tool:
 
 ```bash
