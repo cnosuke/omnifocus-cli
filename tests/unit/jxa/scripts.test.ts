@@ -49,9 +49,34 @@ describe('buildInboxListScript', () => {
   });
 });
 
+describe('getArgv helper', () => {
+  it('is defined in JXA helpers and uses ObjC.deepUnwrap', () => {
+    const script = buildInboxListScript('brief');
+    expect(script).toContain('function getArgv()');
+    expect(script).toContain('ObjC.deepUnwrap($.NSProcessInfo.processInfo.arguments)');
+  });
+
+  it('is used by all argv-consuming scripts instead of shallow ObjC.unwrap', () => {
+    const scripts = [
+      TASK_ADD_SCRIPT,
+      TASK_COMPLETE_SCRIPT,
+      TASK_SEARCH_SCRIPT,
+      PROJECTS_LIST_SCRIPT,
+      PROJECTS_SHOW_SCRIPT,
+      PROJECTS_ADD_SCRIPT,
+      PROJECTS_STATUS_SCRIPT,
+    ];
+    for (const script of scripts) {
+      const body = script.slice(script.indexOf('(function()'));
+      expect(body).toContain('var argv = getArgv();');
+      expect(body).not.toContain('ObjC.unwrap($.NSProcessInfo.processInfo.arguments)');
+    }
+  });
+});
+
 describe('TASK_ADD_SCRIPT + buildTaskAddArgs', () => {
   it('script reads args from NSProcessInfo', () => {
-    expect(TASK_ADD_SCRIPT).toContain('ObjC.unwrap($.NSProcessInfo.processInfo.arguments)');
+    expect(TASK_ADD_SCRIPT).toContain('getArgv()');
     expect(TASK_ADD_SCRIPT).toContain('argv[argv.length - 2]');
     expect(TASK_ADD_SCRIPT).toContain('JSON.parse(argv[argv.length - 1])');
   });
@@ -87,7 +112,7 @@ describe('TASK_ADD_SCRIPT + buildTaskAddArgs', () => {
 
 describe('TASK_COMPLETE_SCRIPT + buildTaskCompleteArgs', () => {
   it('script reads taskId from NSProcessInfo', () => {
-    expect(TASK_COMPLETE_SCRIPT).toContain('ObjC.unwrap($.NSProcessInfo.processInfo.arguments)');
+    expect(TASK_COMPLETE_SCRIPT).toContain('getArgv()');
     expect(TASK_COMPLETE_SCRIPT).toContain('argv[argv.length - 1]');
     expect(TASK_COMPLETE_SCRIPT).toContain('findTask');
     expect(TASK_COMPLETE_SCRIPT).toContain('markComplete');
@@ -101,7 +126,7 @@ describe('TASK_COMPLETE_SCRIPT + buildTaskCompleteArgs', () => {
 
 describe('TASK_SEARCH_SCRIPT + buildTaskSearchArgs', () => {
   it('script reads keyword and options from NSProcessInfo', () => {
-    expect(TASK_SEARCH_SCRIPT).toContain('ObjC.unwrap($.NSProcessInfo.processInfo.arguments)');
+    expect(TASK_SEARCH_SCRIPT).toContain('getArgv()');
     expect(TASK_SEARCH_SCRIPT).toContain('toLowerCase');
   });
 
@@ -165,7 +190,7 @@ describe('buildPerspectivesListScript', () => {
 
 describe('PROJECTS_LIST_SCRIPT + buildProjectsListArgs', () => {
   it('script reads options from NSProcessInfo', () => {
-    expect(PROJECTS_LIST_SCRIPT).toContain('ObjC.unwrap($.NSProcessInfo.processInfo.arguments)');
+    expect(PROJECTS_LIST_SCRIPT).toContain('getArgv()');
     expect(PROJECTS_LIST_SCRIPT).toContain('flattenedProjects');
     expect(PROJECTS_LIST_SCRIPT).toContain('formatProjectBrief');
   });
@@ -194,7 +219,7 @@ describe('PROJECTS_LIST_SCRIPT + buildProjectsListArgs', () => {
 
 describe('PROJECTS_SHOW_SCRIPT + buildProjectsShowArgs', () => {
   it('script reads options from NSProcessInfo', () => {
-    expect(PROJECTS_SHOW_SCRIPT).toContain('ObjC.unwrap($.NSProcessInfo.processInfo.arguments)');
+    expect(PROJECTS_SHOW_SCRIPT).toContain('getArgv()');
     expect(PROJECTS_SHOW_SCRIPT).toContain('findProject');
   });
 
@@ -209,7 +234,7 @@ describe('PROJECTS_SHOW_SCRIPT + buildProjectsShowArgs', () => {
 
 describe('PROJECTS_ADD_SCRIPT + buildProjectsAddArgs', () => {
   it('script reads name and options from NSProcessInfo', () => {
-    expect(PROJECTS_ADD_SCRIPT).toContain('ObjC.unwrap($.NSProcessInfo.processInfo.arguments)');
+    expect(PROJECTS_ADD_SCRIPT).toContain('getArgv()');
     expect(PROJECTS_ADD_SCRIPT).toContain('argv[argv.length - 2]');
     expect(PROJECTS_ADD_SCRIPT).toContain('app.Project');
   });
@@ -225,7 +250,7 @@ describe('PROJECTS_ADD_SCRIPT + buildProjectsAddArgs', () => {
 
 describe('PROJECTS_STATUS_SCRIPT + buildProjectsStatusArgs', () => {
   it('script reads name and status from NSProcessInfo', () => {
-    expect(PROJECTS_STATUS_SCRIPT).toContain('ObjC.unwrap($.NSProcessInfo.processInfo.arguments)');
+    expect(PROJECTS_STATUS_SCRIPT).toContain('getArgv()');
     expect(PROJECTS_STATUS_SCRIPT).toContain('findProject');
     expect(PROJECTS_STATUS_SCRIPT).toContain('project.status');
   });
