@@ -2,7 +2,7 @@ import { wrapJxaScript, DEFAULT_TASK_LIMIT } from '../helpers.js';
 import type { JxaRunnerOptions } from '../types.js';
 
 const SCRIPT = wrapJxaScript(`
-    var argv = ObjC.unwrap($.NSProcessInfo.processInfo.arguments);
+    var argv = getArgv();
     var opts = JSON.parse(argv[argv.length - 1]);
     var projectName = opts.name;
     var project = findProject(doc, projectName);

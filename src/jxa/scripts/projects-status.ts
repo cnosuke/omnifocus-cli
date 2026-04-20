@@ -3,7 +3,7 @@ import type { JxaRunnerOptions } from '../types.js';
 import { mapProjectStatus } from '../../types/index.js';
 
 const SCRIPT = wrapJxaScript(`
-    var argv = ObjC.unwrap($.NSProcessInfo.processInfo.arguments);
+    var argv = getArgv();
     var projectName = argv[argv.length - 2];
     var newStatus = argv[argv.length - 1];
     var project = findProject(doc, projectName);
