@@ -3,7 +3,7 @@ import type { JxaRunnerOptions } from '../types.js';
 import type { TaskAddOptions } from '../../types/index.js';
 
 const SCRIPT = wrapJxaScript(`
-    var argv = ObjC.unwrap($.NSProcessInfo.processInfo.arguments);
+    var argv = getArgv();
     var taskName = argv[argv.length - 2];
     var opts = JSON.parse(argv[argv.length - 1]);
     var task;

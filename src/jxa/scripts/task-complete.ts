@@ -2,7 +2,7 @@ import { wrapJxaScript } from '../helpers.js';
 import type { JxaRunnerOptions } from '../types.js';
 
 const SCRIPT = wrapJxaScript(`
-    var argv = ObjC.unwrap($.NSProcessInfo.processInfo.arguments);
+    var argv = getArgv();
     var taskId = argv[argv.length - 1];
     var task = findTask(doc, taskId);
 

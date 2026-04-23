@@ -3,6 +3,10 @@ export const DEFAULT_TASK_LIMIT = 50;
 export const JXA_HELPERS = `
 ObjC.import('Foundation');
 
+function getArgv() {
+  return ObjC.deepUnwrap($.NSProcessInfo.processInfo.arguments);
+}
+
 function getApp() { return Application("OmniFocus"); }
 function getDoc(app) { return app.defaultDocument; }
 

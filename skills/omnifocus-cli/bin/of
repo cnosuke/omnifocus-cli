@@ -48,6 +48,10 @@ async function runAndPrint(script, options) {
 const JXA_HELPERS = `
 ObjC.import('Foundation');
 
+function getArgv() {
+  return ObjC.deepUnwrap($.NSProcessInfo.processInfo.arguments);
+}
+
 function getApp() { return Application("OmniFocus"); }
 function getDoc(app) { return app.defaultDocument; }
 
@@ -278,7 +282,7 @@ function requirePositionalArg(args, current, existing, helpCommand) {
 //#endregion
 //#region src/jxa/scripts/task-add.ts
 const SCRIPT$6 = wrapJxaScript(`
-    var argv = ObjC.unwrap($.NSProcessInfo.processInfo.arguments);
+    var argv = getArgv();
     var taskName = argv[argv.length - 2];
     var opts = JSON.parse(argv[argv.length - 1]);
     var task;
@@ -328,7 +332,7 @@ function buildTaskAddArgs(name, options) {
 //#endregion
 //#region src/jxa/scripts/task-complete.ts
 const SCRIPT$5 = wrapJxaScript(`
-    var argv = ObjC.unwrap($.NSProcessInfo.processInfo.arguments);
+    var argv = getArgv();
     var taskId = argv[argv.length - 1];
     var task = findTask(doc, taskId);
 
@@ -348,7 +352,7 @@ function buildTaskCompleteArgs(taskId) {
 //#endregion
 //#region src/jxa/scripts/task-search.ts
 const SCRIPT$4 = wrapJxaScript(`
-    var argv = ObjC.unwrap($.NSProcessInfo.processInfo.arguments);
+    var argv = getArgv();
     var keyword = argv[argv.length - 2];
     var opts = JSON.parse(argv[argv.length - 1]);
     var limit = opts.limit || 50;
@@ -672,7 +676,7 @@ function mapProjectStatus(status) {
 //#endregion
 //#region src/jxa/scripts/projects-list.ts
 const SCRIPT$3 = wrapJxaScript(`
-    var argv = ObjC.unwrap($.NSProcessInfo.processInfo.arguments);
+    var argv = getArgv();
     var opts = JSON.parse(argv[argv.length - 1]);
     var projects = doc.flattenedProjects();
     var result = [];
@@ -708,7 +712,7 @@ function buildProjectsListArgs(options) {
 //#endregion
 //#region src/jxa/scripts/projects-show.ts
 const SCRIPT$2 = wrapJxaScript(`
-    var argv = ObjC.unwrap($.NSProcessInfo.processInfo.arguments);
+    var argv = getArgv();
     var opts = JSON.parse(argv[argv.length - 1]);
     var projectName = opts.name;
     var project = findProject(doc, projectName);
@@ -738,7 +742,7 @@ function buildProjectsShowArgs(options) {
 //#endregion
 //#region src/jxa/scripts/projects-add.ts
 const SCRIPT$1 = wrapJxaScript(`
-    var argv = ObjC.unwrap($.NSProcessInfo.processInfo.arguments);
+    var argv = getArgv();
     var projectName = argv[argv.length - 2];
     var opts = JSON.parse(argv[argv.length - 1]);
 
@@ -787,7 +791,7 @@ function buildProjectsAddArgs(name, options) {
 //#endregion
 //#region src/jxa/scripts/projects-status.ts
 const SCRIPT = wrapJxaScript(`
-    var argv = ObjC.unwrap($.NSProcessInfo.processInfo.arguments);
+    var argv = getArgv();
     var projectName = argv[argv.length - 2];
     var newStatus = argv[argv.length - 1];
     var project = findProject(doc, projectName);
