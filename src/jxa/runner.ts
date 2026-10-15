@@ -7,9 +7,9 @@ export function runJxa(script: string, options: JxaRunnerOptions = {}): Promise<
   const { args = [], timeout = DEFAULT_TIMEOUT_MS } = options;
 
   return new Promise((resolve, reject) => {
-    execFile(
+    const child = execFile(
       'osascript',
-      ['-l', 'JavaScript', '-e', script, ...args],
+      ['-l', 'JavaScript', '-', ...args],
       { timeout },
       (error, stdout, stderr) => {
         // osascript may exit non-zero but still produce valid JSON on stdout
@@ -23,5 +23,7 @@ export function runJxa(script: string, options: JxaRunnerOptions = {}): Promise<
         });
       },
     );
+    child.stdin?.on('error', reject);
+    child.stdin?.end(script);
   });
 }

@@ -5,11 +5,10 @@ const DEFAULT_TIMEOUT_MS = 3e4;
 function runJxa(script, options = {}) {
 	const { args = [], timeout = DEFAULT_TIMEOUT_MS } = options;
 	return new Promise((resolve, reject) => {
-		execFile("osascript", [
+		const child = execFile("osascript", [
 			"-l",
 			"JavaScript",
-			"-e",
-			script,
+			"-",
 			...args
 		], { timeout }, (error, stdout, stderr) => {
 			if (error && !stdout) {
@@ -21,6 +20,8 @@ function runJxa(script, options = {}) {
 				exitCode: error ? 1 : 0
 			});
 		});
+		child.stdin?.on("error", reject);
+		child.stdin?.end(script);
 	});
 }
 //#endregion
