@@ -19,7 +19,15 @@ const SCRIPT = wrapOmniScript(`
     if (input.deferDate) project.deferDate = new Date(input.deferDate);
     if (input.flagged !== undefined) project.flagged = input.flagged;
     if (input.note !== undefined) project.note = input.note;
-    if (input.sequential !== undefined) project.sequential = input.sequential;
+    if (input.singleActions) {
+      project.containsSingletonActions = true;
+      project.sequential = false;
+    } else if (input.sequential !== undefined) {
+      project.sequential = input.sequential;
+    }
+    if (input.reviewInterval) {
+      applyReviewInterval(project, input.reviewInterval);
+    }
     if (tags.length > 0) project.addTags(tags);
 
     return JSON.stringify({ success: true, project: formatProjectBrief(project) });`);

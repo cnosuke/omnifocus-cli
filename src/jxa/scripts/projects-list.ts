@@ -4,6 +4,7 @@ import type { ProjectsListOptions } from '../../types/index.js';
 
 const SCRIPT = wrapOmniScript(`
     var targetStatus = input.status ? resolveProjectStatus(input.status) : null;
+    var limit = input.limit || ${DEFAULT_TASK_LIMIT};
     var projects = flattenedProjects;
     var result = [];
     var total = 0;
@@ -19,8 +20,10 @@ const SCRIPT = wrapOmniScript(`
         if (folderName !== input.folder) continue;
       }
 
+      if (input.stalled && !isProjectStalled(p)) continue;
+
       total++;
-      if (result.length < ${DEFAULT_TASK_LIMIT}) {
+      if (result.length < limit) {
         result.push(formatProjectBrief(p));
       }
     }
@@ -31,6 +34,8 @@ export function buildProjectsListArgs(options: ProjectsListOptions): JxaRunnerOp
   const payload: ProjectsListOptions = {};
   if (options.status) payload.status = options.status;
   if (options.folder) payload.folder = options.folder;
+  if (options.stalled) payload.stalled = true;
+  if (options.limit !== undefined) payload.limit = options.limit;
   return buildJsonArgs(payload);
 }
 
