@@ -16,6 +16,12 @@ export interface TaskDetail extends TaskBrief {
   projectName: string | null;
 }
 
+export interface TaskCompleteResult {
+  id: string;
+  name: string;
+  completed: boolean;
+}
+
 export interface TaskAddOptions {
   project?: string;
   dueDate?: string;
@@ -32,10 +38,28 @@ export interface TaskSearchOptions {
   limit?: number;
 }
 
+export type ProjectStatus = 'active' | 'on-hold' | 'done' | 'dropped';
+
+export const VALID_PROJECT_STATUSES: readonly ProjectStatus[] = [
+  'active',
+  'on-hold',
+  'done',
+  'dropped',
+];
+
+export function parseProjectStatus(status: string): ProjectStatus {
+  if ((VALID_PROJECT_STATUSES as readonly string[]).includes(status)) {
+    return status as ProjectStatus;
+  }
+  throw new Error(
+    `Invalid status '${status}'. Must be one of: ${VALID_PROJECT_STATUSES.join(', ')}`,
+  );
+}
+
 export interface ProjectBrief {
   id: string;
   name: string;
-  status: string;
+  status: ProjectStatus;
   dueDate: string | null;
   deferDate: string | null;
   flagged: boolean;
@@ -61,34 +85,52 @@ export interface ProjectAddOptions {
   folder?: string;
 }
 
-const PROJECT_STATUS_MAP: Record<string, string> = {
-  active: 'active status',
-  'on-hold': 'on hold status',
-  done: 'done status',
-  dropped: 'dropped status',
-};
-
-export const VALID_PROJECT_STATUSES = Object.keys(PROJECT_STATUS_MAP);
-
-export function mapProjectStatus(status: string): string {
-  const mapped = PROJECT_STATUS_MAP[status];
-  if (!mapped) {
-    throw new Error(
-      `Invalid status '${status}'. Must be one of: ${VALID_PROJECT_STATUSES.join(', ')}`,
-    );
-  }
-  return mapped;
+export interface ProjectsListOptions {
+  status?: ProjectStatus;
+  folder?: string;
 }
 
-export interface JxaSuccessResponse {
+export interface ProjectsShowOptions {
+  name: string;
+  detailed?: boolean;
+  includeTasks?: boolean;
+}
+
+export interface TasksListResponse<T extends TaskBrief = TaskBrief> {
   success: true;
-  task?: unknown;
-  tasks?: unknown[];
-  totalCount?: number;
-  perspectiveNames?: string[];
-  project?: unknown;
-  projects?: unknown[];
+  tasks: T[];
+  totalCount: number;
 }
+
+export interface SingleTaskResponse<T = TaskBrief> {
+  success: true;
+  task: T;
+}
+
+export interface PerspectivesListResponse {
+  success: true;
+  perspectiveNames: string[];
+  totalCount: number;
+}
+
+export interface ProjectsListResponse {
+  success: true;
+  projects: ProjectBrief[];
+  totalCount: number;
+}
+
+export interface SingleProjectResponse<P extends ProjectBrief = ProjectBrief> {
+  success: true;
+  project: P;
+  tasks?: (TaskBrief | TaskDetail)[];
+}
+
+export type JxaSuccessResponse =
+  | TasksListResponse<TaskBrief | TaskDetail>
+  | SingleTaskResponse<TaskBrief | TaskCompleteResult>
+  | PerspectivesListResponse
+  | ProjectsListResponse
+  | SingleProjectResponse<ProjectBrief | ProjectDetail>;
 
 export interface JxaErrorResponse {
   success: false;

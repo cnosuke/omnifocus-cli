@@ -1,26 +1,22 @@
-import { wrapJxaScript, DEFAULT_TASK_LIMIT } from '../helpers.js';
+import { buildJsonArgs, DEFAULT_TASK_LIMIT, wrapOmniScript } from '../helpers.js';
 import type { JxaRunnerOptions } from '../types.js';
-import { mapProjectStatus } from '../../types/index.js';
+import type { ProjectsListOptions } from '../../types/index.js';
 
-const SCRIPT = wrapJxaScript(`
-    var argv = getArgv();
-    var opts = JSON.parse(argv[argv.length - 1]);
-    var projects = doc.flattenedProjects();
+const SCRIPT = wrapOmniScript(`
+    var targetStatus = input.status ? resolveProjectStatus(input.status) : null;
+    var projects = flattenedProjects;
     var result = [];
     var total = 0;
 
     for (var i = 0; i < projects.length; i++) {
       var p = projects[i];
 
-      if (opts.status) {
-        var pStatus = String(p.status());
-        if (pStatus !== opts.status) continue;
-      }
+      if (targetStatus && p.status !== targetStatus) continue;
 
-      if (opts.folder) {
-        var folder = p.parentFolder();
-        var folderName = folder ? folder.name() : null;
-        if (folderName !== opts.folder) continue;
+      if (input.folder) {
+        var folder = p.parentFolder;
+        var folderName = folder ? folder.name : null;
+        if (folderName !== input.folder) continue;
       }
 
       total++;
@@ -31,22 +27,11 @@ const SCRIPT = wrapJxaScript(`
 
     return JSON.stringify({ success: true, projects: result, totalCount: total });`);
 
-export interface ProjectsListOptions {
-  status?: string;
-  folder?: string;
-}
-
 export function buildProjectsListArgs(options: ProjectsListOptions): JxaRunnerOptions {
-  const opts: Record<string, string> = {};
-
-  if (options.status) {
-    opts.status = mapProjectStatus(options.status);
-  }
-  if (options.folder) {
-    opts.folder = options.folder;
-  }
-
-  return { args: [JSON.stringify(opts)] };
+  const payload: ProjectsListOptions = {};
+  if (options.status) payload.status = options.status;
+  if (options.folder) payload.folder = options.folder;
+  return buildJsonArgs(payload);
 }
 
 export { SCRIPT as PROJECTS_LIST_SCRIPT };

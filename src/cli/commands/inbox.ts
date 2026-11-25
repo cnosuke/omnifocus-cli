@@ -1,22 +1,24 @@
 import { runAndPrint } from '../run-and-print.js';
+import { expectPositionalCount, parseCommandArgs } from '../arg-utils.js';
 import { buildInboxListScript } from '../../jxa/scripts/inbox-list.js';
+import type { TaskBrief, TaskDetail, TasksListResponse } from '../../types/index.js';
 
 export async function inboxList(args: string[]): Promise<void> {
-  let mode: 'brief' | 'detailed' = 'brief';
+  const { values, positionals } = parseCommandArgs(
+    args,
+    { detailed: { type: 'boolean' } },
+    'of inbox list --help',
+  );
 
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
-    if (arg === '--detailed') {
-      mode = 'detailed';
-    } else if (arg === '--help' || arg === '-h') {
-      printInboxListHelp();
-      return;
-    } else {
-      throw new Error(`Unknown flag '${arg}'. Run 'of inbox list --help' for usage.`);
-    }
+  if (values.help) {
+    printInboxListHelp();
+    return;
   }
 
-  await runAndPrint(buildInboxListScript(mode));
+  expectPositionalCount(positionals, 0, 'of inbox list --help');
+
+  const mode = values.detailed ? 'detailed' : 'brief';
+  await runAndPrint<TasksListResponse<TaskBrief | TaskDetail>>(buildInboxListScript(mode));
 }
 
 export function runInbox(args: string[]): Promise<void> {

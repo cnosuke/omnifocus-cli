@@ -61,7 +61,7 @@ of task search "review" --project Work --flagged --limit 10
 ### Task Lists
 
 ```bash
-of tasks today                   # Tasks due today
+of tasks today                   # Tasks due today (including overdue)
 of tasks overdue                 # Overdue tasks
 of tasks flagged                 # Flagged tasks
 ```
@@ -110,7 +110,7 @@ Default time is 17:00 for relative and keyword-based dates.
 
 ## Output Format
 
-All commands return JSON. If `jq` is installed, output is automatically pretty-printed.
+All commands output pretty-printed JSON to stdout on success. On failure, an error message (`Error: ...`) is printed to stderr and the process exits with code `1`.
 
 **Success (list):**
 
@@ -131,13 +131,10 @@ All commands return JSON. If `jq` is installed, output is automatically pretty-p
 }
 ```
 
-**Error:**
+**Error (stderr, exit code 1):**
 
-```json
-{
-  "success": false,
-  "error": "OmniFocus is not running"
-}
+```text
+Error: OmniFocus is not running
 ```
 
 ## Task Fields

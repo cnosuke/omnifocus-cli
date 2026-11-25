@@ -1,16 +1,19 @@
 import { runAndPrint } from '../run-and-print.js';
+import { expectPositionalCount, parseCommandArgs } from '../arg-utils.js';
 import { buildPerspectivesListScript } from '../../jxa/scripts/perspectives-list.js';
+import type { PerspectivesListResponse } from '../../types/index.js';
 
 export async function perspectivesList(args: string[]): Promise<void> {
-  for (const arg of args) {
-    if (arg === '--help' || arg === '-h') {
-      printPerspectivesListHelp();
-      return;
-    }
-    throw new Error(`Unknown argument '${arg}'. Run 'of perspectives list --help' for usage.`);
+  const { values, positionals } = parseCommandArgs(args, {}, 'of perspectives list --help');
+
+  if (values.help) {
+    printPerspectivesListHelp();
+    return;
   }
 
-  await runAndPrint(buildPerspectivesListScript());
+  expectPositionalCount(positionals, 0, 'of perspectives list --help');
+
+  await runAndPrint<PerspectivesListResponse>(buildPerspectivesListScript());
 }
 
 export function runPerspectives(args: string[]): Promise<void> {

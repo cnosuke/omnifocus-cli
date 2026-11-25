@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { execFile } from "node:child_process";
+import { parseArgs } from "node:util";
 //#region src/jxa/runner.ts
 const DEFAULT_TIMEOUT_MS = 3e4;
 function runJxa(script, options = {}) {
@@ -45,175 +46,180 @@ async function runAndPrint(script, options) {
 	console.log(JSON.stringify(response, null, 2));
 }
 //#endregion
-//#region src/jxa/helpers.ts
-const JXA_HELPERS = `
-ObjC.import('Foundation');
-
-function getArgv() {
-  return ObjC.deepUnwrap($.NSProcessInfo.processInfo.arguments);
+//#region src/cli/arg-utils.ts
+function parsePositiveInteger(flag, value) {
+	const n = Number(value);
+	if (!Number.isInteger(n) || n <= 0) throw new Error(`${flag} must be a positive integer, got '${value}'`);
+	return n;
 }
-
-function getApp() { return Application("OmniFocus"); }
-function getDoc(app) { return app.defaultDocument; }
-
-function isOmniFocusRunning() {
-  var se = Application("System Events");
-  var procs = se.processes.whose({ name: "OmniFocus" });
-  return procs.length > 0;
+function parseCommandArgs(args, options, helpCommand) {
+	const mergedOptions = {
+		help: {
+			type: "boolean",
+			short: "h"
+		},
+		...options
+	};
+	try {
+		const parsed = parseArgs({
+			args,
+			options: mergedOptions,
+			allowPositionals: true,
+			strict: true
+		});
+		return {
+			values: parsed.values,
+			positionals: parsed.positionals
+		};
+	} catch (err) {
+		const message = err instanceof Error ? err.message : String(err);
+		throw new Error(`${message}. Run '${helpCommand}' for usage.`);
+	}
+}
+function expectPositionalCount(positionals, max, helpCommand) {
+	if (positionals.length > max) throw new Error(`Unexpected argument '${positionals[max]}'. Run '${helpCommand}' for usage.`);
+}
+//#endregion
+//#region src/jxa/helpers.ts
+const OMNI_HELPERS = `
+function isTaskActive(task) {
+  return !task.completed && task.taskStatus !== Task.Status.Dropped;
 }
 
 function formatTaskBrief(task) {
   return {
-    id: task.id(),
-    name: task.name(),
-    dueDate: task.dueDate() ? task.dueDate().toISOString() : null,
-    flagged: task.flagged(),
-    completed: task.completed()
+    id: task.id.primaryKey,
+    name: task.name,
+    dueDate: task.dueDate ? task.dueDate.toISOString() : null,
+    flagged: task.flagged,
+    completed: task.completed
   };
 }
 
 function formatTaskDetail(task) {
-  var brief = formatTaskBrief(task);
-  var proj = task.containingProject();
-  var taskTags = task.tags();
-  var tagNames = [];
-  for (var i = 0; i < taskTags.length; i++) {
-    tagNames.push(taskTags[i].name());
-  }
-  return Object.assign(brief, {
-    note: task.note() || "",
-    deferDate: task.deferDate() ? task.deferDate().toISOString() : null,
-    completionDate: task.completionDate() ? task.completionDate().toISOString() : null,
-    estimatedMinutes: task.estimatedMinutes(),
-    inInbox: task.inInbox(),
-    tags: tagNames,
-    projectName: proj ? proj.name() : null
+  var proj = task.containingProject;
+  return Object.assign(formatTaskBrief(task), {
+    note: task.note || "",
+    deferDate: task.deferDate ? task.deferDate.toISOString() : null,
+    completionDate: task.completionDate ? task.completionDate.toISOString() : null,
+    estimatedMinutes: task.estimatedMinutes,
+    inInbox: task.inInbox,
+    tags: task.tags.map(function(t) { return t.name; }),
+    projectName: proj ? proj.name : null
   });
 }
 
-function parseDate(dateStr) {
-  if (!dateStr) return null;
-  var now = new Date();
-  var lower = dateStr.toLowerCase().trim();
-
-  if (lower === "today") return new Date(now.getFullYear(), now.getMonth(), now.getDate(), 17, 0, 0);
-  if (lower === "tomorrow") { var d = new Date(now); d.setDate(d.getDate() + 1); d.setHours(17,0,0,0); return d; }
-  if (lower === "next week") { var d = new Date(now); d.setDate(d.getDate() + 7); d.setHours(17,0,0,0); return d; }
-
-  var daysMatch = lower.match(/^\\+(\\d+)d$/);
-  if (daysMatch) { var d = new Date(now); d.setDate(d.getDate() + parseInt(daysMatch[1])); d.setHours(17,0,0,0); return d; }
-
-  var weeksMatch = lower.match(/^\\+(\\d+)w$/);
-  if (weeksMatch) { var d = new Date(now); d.setDate(d.getDate() + parseInt(weeksMatch[1]) * 7); d.setHours(17,0,0,0); return d; }
-
-  var parsed = new Date(dateStr);
-  return isNaN(parsed.getTime()) ? null : parsed;
+function normalizeProjectStatus(status) {
+  if (status === Project.Status.Active) return "active";
+  if (status === Project.Status.OnHold) return "on-hold";
+  if (status === Project.Status.Done) return "done";
+  if (status === Project.Status.Dropped) return "dropped";
+  return String(status);
 }
 
-function findProject(doc, name) {
-  var projects = doc.flattenedProjects();
-  for (var i = 0; i < projects.length; i++) {
-    if (projects[i].name() === name) return projects[i];
+function resolveProjectStatus(status) {
+  switch (status) {
+    case "active": return Project.Status.Active;
+    case "on-hold": return Project.Status.OnHold;
+    case "done": return Project.Status.Done;
+    case "dropped": return Project.Status.Dropped;
+    default: throw new Error("Invalid status: " + status);
   }
-  return null;
 }
 
-function findTag(doc, name) {
-  var tags = doc.flattenedTags();
-  for (var i = 0; i < tags.length; i++) {
-    if (tags[i].name() === name) return tags[i];
+function resolveTags(tagNames) {
+  var allTags = flattenedTags;
+  var resolved = [];
+  for (var i = 0; i < tagNames.length; i++) {
+    var tag = allTags.byName(tagNames[i]);
+    if (!tag) {
+      throw new Error("Tag not found: " + tagNames[i]);
+    }
+    resolved.push(tag);
   }
-  return null;
-}
-
-function findTask(doc, taskId) {
-  var tasks = doc.flattenedTasks();
-  for (var i = 0; i < tasks.length; i++) {
-    if (tasks[i].id() === taskId) return tasks[i];
-  }
-  return null;
-}
-
-function findFolder(doc, name) {
-  var folders = doc.flattenedFolders();
-  for (var i = 0; i < folders.length; i++) {
-    if (folders[i].name() === name) return folders[i];
-  }
-  return null;
-}
-
-function normalizeProjectStatus(rawStatus) {
-  var map = {"active status":"active", "on hold status":"on-hold", "done status":"done", "dropped status":"dropped"};
-  return map[String(rawStatus)] || String(rawStatus);
+  return resolved;
 }
 
 function countRemainingTasks(project) {
-  var tasks = project.flattenedTasks();
+  var tasks = project.flattenedTasks;
   var count = 0;
   for (var i = 0; i < tasks.length; i++) {
-    if (!tasks[i].completed()) count++;
+    if (isTaskActive(tasks[i])) count++;
   }
   return count;
 }
 
 function formatProjectBrief(project) {
-  var folder = project.parentFolder();
+  var folder = project.parentFolder;
   return {
-    id: project.id(),
-    name: project.name(),
-    status: normalizeProjectStatus(project.status()),
-    dueDate: project.dueDate() ? project.dueDate().toISOString() : null,
-    deferDate: project.deferDate() ? project.deferDate().toISOString() : null,
-    flagged: project.flagged(),
+    id: project.id.primaryKey,
+    name: project.name,
+    status: normalizeProjectStatus(project.status),
+    dueDate: project.dueDate ? project.dueDate.toISOString() : null,
+    deferDate: project.deferDate ? project.deferDate.toISOString() : null,
+    flagged: project.flagged,
     taskCount: countRemainingTasks(project),
-    folderName: folder ? folder.name() : null
+    folderName: folder ? folder.name : null
   };
 }
 
 function formatProjectDetail(project) {
-  var brief = formatProjectBrief(project);
-  var projectTags = project.tags();
-  var tagNames = [];
-  for (var i = 0; i < projectTags.length; i++) {
-    tagNames.push(projectTags[i].name());
-  }
-  return Object.assign(brief, {
-    note: project.note() || "",
-    completionDate: project.completionDate() ? project.completionDate().toISOString() : null,
-    estimatedMinutes: project.estimatedMinutes(),
-    sequential: project.sequential(),
-    tags: tagNames
+  return Object.assign(formatProjectBrief(project), {
+    note: project.note || "",
+    completionDate: project.completionDate ? project.completionDate.toISOString() : null,
+    estimatedMinutes: project.estimatedMinutes,
+    sequential: project.sequential,
+    tags: project.tags.map(function(t) { return t.name; })
   });
 }
 `;
-function wrapJxaScript(body) {
-	return `${JXA_HELPERS}
-(function() {
+function wrapOmniScript(omniBody) {
+	const fullOmniCode = `${OMNI_HELPERS}
+(function(input) {
   try {
-    if (!isOmniFocusRunning()) {
+${omniBody}
+  } catch (e) {
+    return JSON.stringify({ success: false, error: e.message || String(e) });
+  }
+})`;
+	return `function run(argv) {
+  try {
+    var app = Application("OmniFocus");
+    if (!app.running()) {
       return JSON.stringify({ success: false, error: "OmniFocus is not running" });
     }
-    var app = getApp();
-    var doc = getDoc(app);
-${body}
+    var inputJson = argv.length > 0 ? String(argv[0]) : "{}";
+    var escapedInput = JSON.stringify(inputJson)
+      .replace(/\\u2028/g, "\\\\u2028")
+      .replace(/\\u2029/g, "\\\\u2029");
+    var omniSource = ${JSON.stringify(fullOmniCode)} + "(JSON.parse(" + escapedInput + "));";
+    var result = app.evaluateJavascript(omniSource);
+    if (typeof result !== "string") {
+      return JSON.stringify({ success: false, error: "Unexpected response from OmniFocus" });
+    }
+    return result;
   } catch (e) {
-    return JSON.stringify({ success: false, error: e.message });
+    return JSON.stringify({ success: false, error: e.message || String(e) });
   }
-})();`;
+}`;
+}
+function buildJsonArgs(payload) {
+	return { args: [JSON.stringify(payload)] };
 }
 //#endregion
 //#region src/jxa/scripts/inbox-list.ts
 function buildInboxListScript(mode) {
-	return wrapJxaScript(`
-    var allTasks = doc.inboxTasks();
+	return wrapOmniScript(`
+    var tasks = inbox;
     var result = [];
     var total = 0;
 
-    for (var i = 0; i < allTasks.length; i++) {
-      if (allTasks[i].completed()) continue;
+    for (var i = 0; i < tasks.length; i++) {
+      var task = tasks[i];
+      if (!isTaskActive(task)) continue;
       total++;
       if (result.length >= 50) continue;
-      result.push(${mode === "detailed" ? "formatTaskDetail" : "formatTaskBrief"}(allTasks[i]));
+      result.push(${mode === "detailed" ? "formatTaskDetail" : "formatTaskBrief"}(task));
     }
 
     return JSON.stringify({ success: true, tasks: result, totalCount: total });`);
@@ -221,16 +227,13 @@ function buildInboxListScript(mode) {
 //#endregion
 //#region src/cli/commands/inbox.ts
 async function inboxList(args) {
-	let mode = "brief";
-	for (let i = 0; i < args.length; i++) {
-		const arg = args[i];
-		if (arg === "--detailed") mode = "detailed";
-		else if (arg === "--help" || arg === "-h") {
-			printInboxListHelp();
-			return;
-		} else throw new Error(`Unknown flag '${arg}'. Run 'of inbox list --help' for usage.`);
+	const { values, positionals } = parseCommandArgs(args, { detailed: { type: "boolean" } }, "of inbox list --help");
+	if (values.help) {
+		printInboxListHelp();
+		return;
 	}
-	await runAndPrint(buildInboxListScript(mode));
+	expectPositionalCount(positionals, 0, "of inbox list --help");
+	await runAndPrint(buildInboxListScript(values.detailed ? "detailed" : "brief"));
 }
 function runInbox(args) {
 	const sub = args[0];
@@ -264,199 +267,182 @@ Subcommands:
 Run 'of inbox list --help' for details.`);
 }
 //#endregion
-//#region src/cli/arg-utils.ts
-function requireFlagValue(flag, args, index) {
-	const value = args[index];
-	if (value === void 0) throw new Error(`${flag} requires a value`);
-	return value;
+//#region src/cli/date.ts
+const DEFAULT_HOUR = 17;
+function parseDateInput(input, now = /* @__PURE__ */ new Date()) {
+	const trimmed = input.trim();
+	if (!trimmed) throw new Error("Invalid date: value cannot be empty");
+	const lower = trimmed.toLowerCase();
+	if (lower === "today") return localDateWithDefaultTime(now, 0);
+	if (lower === "tomorrow") return localDateWithDefaultTime(now, 1);
+	if (lower === "next week") return localDateWithDefaultTime(now, 7);
+	const daysMatch = lower.match(/^\+(\d+)d$/);
+	if (daysMatch) return localDateWithDefaultTime(now, Number(daysMatch[1]));
+	const weeksMatch = lower.match(/^\+(\d+)w$/);
+	if (weeksMatch) return localDateWithDefaultTime(now, Number(weeksMatch[1]) * 7);
+	const dateOnlyMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+	if (dateOnlyMatch) {
+		const year = Number(dateOnlyMatch[1]);
+		const month = Number(dateOnlyMatch[2]);
+		const day = Number(dateOnlyMatch[3]);
+		const parsed = new Date(year, month - 1, day, DEFAULT_HOUR, 0, 0, 0);
+		if (parsed.getFullYear() !== year || parsed.getMonth() !== month - 1 || parsed.getDate() !== day) throw new Error(`Invalid date '${input}'`);
+		return parsed;
+	}
+	const parsed = new Date(trimmed);
+	if (Number.isNaN(parsed.getTime())) throw new Error(`Invalid date '${input}'`);
+	return parsed;
 }
-function requireInteger(flag, value) {
-	const n = Number(value);
-	if (!Number.isInteger(n) || n < 0) throw new Error(`${flag} must be a positive integer, got '${value}'`);
-	return n;
+function parseDateToIso(input, now = /* @__PURE__ */ new Date()) {
+	return parseDateInput(input, now).toISOString();
 }
-function requirePositionalArg(args, current, existing, helpCommand) {
-	if (current.startsWith("-")) throw new Error(`Unknown flag '${current}'. Run '${helpCommand}' for usage.`);
-	if (existing) throw new Error(`Unexpected argument '${current}'. Run '${helpCommand}' for usage.`);
-	return current;
+function localDateWithDefaultTime(base, offsetDays) {
+	return new Date(base.getFullYear(), base.getMonth(), base.getDate() + offsetDays, DEFAULT_HOUR, 0, 0, 0);
 }
 //#endregion
 //#region src/jxa/scripts/task-add.ts
-const SCRIPT$6 = wrapJxaScript(`
-    var argv = getArgv();
-    var taskName = argv[argv.length - 2];
-    var opts = JSON.parse(argv[argv.length - 1]);
-    var task;
-
-    if (opts.project) {
-      var project = findProject(doc, opts.project);
+const SCRIPT$6 = wrapOmniScript(`
+    var project = null;
+    if (input.project) {
+      project = flattenedProjects.byName(input.project);
       if (!project) {
-        return JSON.stringify({ success: false, error: "Project not found: " + opts.project });
+        return JSON.stringify({ success: false, error: "Project not found: " + input.project });
       }
-      task = app.Task({ name: taskName });
-      project.rootTask.tasks.push(task);
-    } else {
-      task = app.InboxTask({ name: taskName });
-      doc.inboxTasks.push(task);
     }
 
-    if (opts.dueDate) {
-      var due = parseDate(opts.dueDate);
-      if (due) task.dueDate = due;
-    }
-    if (opts.deferDate) {
-      var defer = parseDate(opts.deferDate);
-      if (defer) task.deferDate = defer;
-    }
-    if (opts.flagged !== undefined) {
-      task.flagged = opts.flagged;
-    }
-    if (opts.note) {
-      task.note = opts.note;
-    }
-    if (opts.estimatedMinutes !== undefined) {
-      task.estimatedMinutes = opts.estimatedMinutes;
-    }
-    if (opts.tags && opts.tags.length > 0) {
-      for (var i = 0; i < opts.tags.length; i++) {
-        var tag = findTag(doc, opts.tags[i]);
-        if (tag) {
-          app.add(tag, { to: task.tags });
-        }
-      }
-    }
+    var tags = input.tags && input.tags.length > 0 ? resolveTags(input.tags) : [];
+
+    var task = project ? new Task(input.name, project) : new Task(input.name);
+
+    if (input.dueDate) task.dueDate = new Date(input.dueDate);
+    if (input.deferDate) task.deferDate = new Date(input.deferDate);
+    if (input.flagged !== undefined) task.flagged = input.flagged;
+    if (input.note !== undefined) task.note = input.note;
+    if (input.estimatedMinutes !== undefined) task.estimatedMinutes = input.estimatedMinutes;
+    if (tags.length > 0) task.addTags(tags);
 
     return JSON.stringify({ success: true, task: formatTaskBrief(task) });`);
 function buildTaskAddArgs(name, options) {
-	return { args: [name, JSON.stringify(options)] };
+	return buildJsonArgs({
+		name,
+		...options
+	});
 }
 //#endregion
 //#region src/jxa/scripts/task-complete.ts
-const SCRIPT$5 = wrapJxaScript(`
-    var argv = getArgv();
-    var taskId = argv[argv.length - 1];
-    var task = findTask(doc, taskId);
+const SCRIPT$5 = wrapOmniScript(`
+    var task = Task.byIdentifier(input.taskId);
 
     if (!task) {
-      return JSON.stringify({ success: false, error: "Task not found: " + taskId });
+      return JSON.stringify({ success: false, error: "Task not found: " + input.taskId });
     }
 
-    app.markComplete(task);
+    var completed = task.markComplete();
 
     return JSON.stringify({
       success: true,
-      task: { id: task.id(), name: task.name(), completed: task.completed() }
+      task: {
+        id: completed.id.primaryKey,
+        name: completed.name,
+        completed: completed.completed
+      }
     });`);
 function buildTaskCompleteArgs(taskId) {
-	return { args: [taskId] };
+	return buildJsonArgs({ taskId });
 }
 //#endregion
 //#region src/jxa/scripts/task-search.ts
-const SCRIPT$4 = wrapJxaScript(`
-    var argv = getArgv();
-    var keyword = argv[argv.length - 2];
-    var opts = JSON.parse(argv[argv.length - 1]);
-    var limit = opts.limit || 50;
-    var searchLower = keyword.toLowerCase();
-    var tasks = doc.flattenedTasks();
+const SCRIPT$4 = wrapOmniScript(`
+    var limit = input.limit || 50;
+    var searchLower = input.keyword.toLowerCase();
+    var tasks = flattenedTasks;
     var result = [];
+    var total = 0;
 
-    for (var i = 0; i < tasks.length && result.length < limit; i++) {
+    for (var i = 0; i < tasks.length; i++) {
       var t = tasks[i];
-      if (t.completed()) continue;
-      if (opts.flagged !== undefined && t.flagged() !== opts.flagged) continue;
-      if (opts.project) {
-        var proj = t.containingProject();
-        if (!proj || proj.name() !== opts.project) continue;
+      if (t.project !== null) continue;
+      if (!isTaskActive(t)) continue;
+      if (input.flagged !== undefined && t.flagged !== input.flagged) continue;
+      if (input.project) {
+        var proj = t.containingProject;
+        if (!proj || proj.name !== input.project) continue;
       }
-      var name = t.name().toLowerCase();
-      var note = (t.note() || "").toLowerCase();
+      var name = t.name.toLowerCase();
+      var note = (t.note || "").toLowerCase();
       if (name.indexOf(searchLower) !== -1 || note.indexOf(searchLower) !== -1) {
-        result.push(formatTaskBrief(t));
+        total++;
+        if (result.length < limit) result.push(formatTaskBrief(t));
       }
     }
 
-    return JSON.stringify({ success: true, tasks: result, totalCount: result.length });`);
+    return JSON.stringify({ success: true, tasks: result, totalCount: total });`);
 function buildTaskSearchArgs(keyword, options) {
-	return { args: [keyword, JSON.stringify(options)] };
+	return buildJsonArgs({
+		keyword,
+		...options
+	});
 }
 //#endregion
 //#region src/cli/commands/task.ts
 async function taskAdd(args) {
-	let name = "";
-	const options = {};
-	const tags = [];
-	for (let i = 0; i < args.length; i++) {
-		const arg = args[i];
-		switch (arg) {
-			case "--project":
-				options.project = requireFlagValue("--project", args, ++i);
-				break;
-			case "--due":
-				options.dueDate = requireFlagValue("--due", args, ++i);
-				break;
-			case "--defer":
-				options.deferDate = requireFlagValue("--defer", args, ++i);
-				break;
-			case "--flagged":
-				options.flagged = true;
-				break;
-			case "--note":
-				options.note = requireFlagValue("--note", args, ++i);
-				break;
-			case "--estimate":
-				options.estimatedMinutes = requireInteger("--estimate", requireFlagValue("--estimate", args, ++i));
-				break;
-			case "--tag":
-				tags.push(requireFlagValue("--tag", args, ++i));
-				break;
-			case "--help":
-			case "-h":
-				printTaskAddHelp();
-				return;
-			default: name = requirePositionalArg(args, arg, name, "of task add --help");
+	const { values, positionals } = parseCommandArgs(args, {
+		project: { type: "string" },
+		due: { type: "string" },
+		defer: { type: "string" },
+		flagged: { type: "boolean" },
+		note: { type: "string" },
+		estimate: { type: "string" },
+		tag: {
+			type: "string",
+			multiple: true
 		}
+	}, "of task add --help");
+	if (values.help) {
+		printTaskAddHelp();
+		return;
 	}
+	expectPositionalCount(positionals, 1, "of task add --help");
+	const name = positionals[0];
 	if (!name) throw new Error("Task name is required. Run 'of task add --help' for usage.");
-	if (tags.length > 0) options.tags = tags;
+	const options = {};
+	if (values.project !== void 0) options.project = values.project;
+	if (values.due !== void 0) options.dueDate = parseDateToIso(values.due);
+	if (values.defer !== void 0) options.deferDate = parseDateToIso(values.defer);
+	if (values.flagged) options.flagged = true;
+	if (values.note !== void 0) options.note = values.note;
+	if (values.estimate !== void 0) options.estimatedMinutes = parsePositiveInteger("--estimate", values.estimate);
+	if (values.tag && values.tag.length > 0) options.tags = values.tag;
 	await runAndPrint(SCRIPT$6, buildTaskAddArgs(name, options));
 }
 async function taskComplete(args) {
-	let taskId = "";
-	for (let i = 0; i < args.length; i++) {
-		const arg = args[i];
-		if (arg === "--help" || arg === "-h") {
-			printTaskCompleteHelp();
-			return;
-		}
-		taskId = requirePositionalArg(args, arg, taskId, "of task complete --help");
+	const { values, positionals } = parseCommandArgs(args, {}, "of task complete --help");
+	if (values.help) {
+		printTaskCompleteHelp();
+		return;
 	}
+	expectPositionalCount(positionals, 1, "of task complete --help");
+	const taskId = positionals[0];
 	if (!taskId) throw new Error("Task ID is required. Run 'of task complete --help' for usage.");
 	await runAndPrint(SCRIPT$5, buildTaskCompleteArgs(taskId));
 }
 async function taskSearch(args) {
-	let keyword = "";
-	const options = {};
-	for (let i = 0; i < args.length; i++) {
-		const arg = args[i];
-		switch (arg) {
-			case "--project":
-				options.project = requireFlagValue("--project", args, ++i);
-				break;
-			case "--flagged":
-				options.flagged = true;
-				break;
-			case "--limit":
-				options.limit = requireInteger("--limit", requireFlagValue("--limit", args, ++i));
-				break;
-			case "--help":
-			case "-h":
-				printTaskSearchHelp();
-				return;
-			default: keyword = requirePositionalArg(args, arg, keyword, "of task search --help");
-		}
+	const { values, positionals } = parseCommandArgs(args, {
+		project: { type: "string" },
+		flagged: { type: "boolean" },
+		limit: { type: "string" }
+	}, "of task search --help");
+	if (values.help) {
+		printTaskSearchHelp();
+		return;
 	}
+	expectPositionalCount(positionals, 1, "of task search --help");
+	const keyword = positionals[0];
 	if (!keyword) throw new Error("Search keyword is required. Run 'of task search --help' for usage.");
+	const options = {};
+	if (values.project !== void 0) options.project = values.project;
+	if (values.flagged) options.flagged = true;
+	if (values.limit !== void 0) options.limit = parsePositiveInteger("--limit", values.limit);
 	await runAndPrint(SCRIPT$4, buildTaskSearchArgs(keyword, options));
 }
 function runTask(args) {
@@ -535,15 +521,16 @@ Run 'of task <subcommand> --help' for details.`);
 //#endregion
 //#region src/jxa/scripts/tasks-filter.ts
 function buildFilterScript(filterCondition, setup = "") {
-	return wrapJxaScript(`
+	return wrapOmniScript(`
     ${setup}
-    var tasks = doc.flattenedTasks();
+    var tasks = flattenedTasks;
     var result = [];
     var total = 0;
 
     for (var i = 0; i < tasks.length; i++) {
       var t = tasks[i];
-      if (t.completed()) continue;
+      if (t.project !== null) continue;
+      if (!isTaskActive(t)) continue;
       ${filterCondition}
     }
 
@@ -551,14 +538,14 @@ function buildFilterScript(filterCondition, setup = "") {
 }
 function buildTasksFlaggedScript() {
 	return buildFilterScript(`
-      if (t.flagged()) {
+      if (t.flagged) {
         total++;
         if (result.length < 50) result.push(formatTaskBrief(t));
       }`);
 }
 function buildTasksOverdueScript() {
 	return buildFilterScript(`
-      var due = t.dueDate();
+      var due = t.dueDate;
       if (!due) continue;
       if (due < startOfToday) {
         total++;
@@ -567,31 +554,31 @@ function buildTasksOverdueScript() {
 }
 function buildTasksTodayScript() {
 	return buildFilterScript(`
-      var due = t.dueDate();
+      var due = t.dueDate;
       if (!due) continue;
       if (due <= endOfToday) {
         total++;
         if (result.length < 50) result.push(formatTaskBrief(t));
-      }`, "var now = new Date();\n    var endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);");
+      }`, "var now = new Date();\n    var endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);");
 }
 //#endregion
 //#region src/cli/commands/tasks.ts
-async function runSimpleTasksCommand(args, commandName, buildScript) {
-	for (const arg of args) {
-		if (arg === "--help" || arg === "-h") {
-			console.log(`Usage: of tasks ${commandName}\n\nList ${commandName} tasks.\n\nExamples:\n  of tasks ${commandName}`);
-			return;
-		}
-		throw new Error(`Unknown argument '${arg}'. Run 'of tasks ${commandName} --help' for usage.`);
+async function runSimpleTasksCommand(args, commandName, description, buildScript) {
+	const helpCommand = `of tasks ${commandName} --help`;
+	const { values, positionals } = parseCommandArgs(args, {}, helpCommand);
+	if (values.help) {
+		console.log(`Usage: of tasks ${commandName}\n\n${description}\n\nExamples:\n  of tasks ${commandName}`);
+		return;
 	}
+	expectPositionalCount(positionals, 0, helpCommand);
 	await runAndPrint(buildScript());
 }
 function runTasks(args) {
 	const sub = args[0];
 	switch (sub) {
-		case "flagged": return runSimpleTasksCommand(args.slice(1), "flagged", buildTasksFlaggedScript);
-		case "overdue": return runSimpleTasksCommand(args.slice(1), "overdue", buildTasksOverdueScript);
-		case "today": return runSimpleTasksCommand(args.slice(1), "today", buildTasksTodayScript);
+		case "flagged": return runSimpleTasksCommand(args.slice(1), "flagged", "List flagged tasks.", buildTasksFlaggedScript);
+		case "overdue": return runSimpleTasksCommand(args.slice(1), "overdue", "List overdue tasks.", buildTasksOverdueScript);
+		case "today": return runSimpleTasksCommand(args.slice(1), "today", "List tasks due today (including overdue tasks).", buildTasksTodayScript);
 		case "--help":
 		case "-h":
 			printTasksHelp();
@@ -605,32 +592,27 @@ function printTasksHelp() {
 Subcommands:
   flagged    List flagged tasks
   overdue    List overdue tasks
-  today      List tasks due today
+  today      List tasks due today (including overdue)
 
 Run 'of tasks <subcommand> --help' for details.`);
 }
 //#endregion
 //#region src/jxa/scripts/perspectives-list.ts
 function buildPerspectivesListScript() {
-	return wrapJxaScript(`
-    var names = doc.perspectiveNames();
-    var result = [];
-    for (var i = 0; i < names.length; i++) {
-      result.push(names[i]);
-    }
+	return wrapOmniScript(`
+    var names = Perspective.all.map(function(p) { return p.name; });
 
-    return JSON.stringify({ success: true, perspectiveNames: result, totalCount: result.length });`);
+    return JSON.stringify({ success: true, perspectiveNames: names, totalCount: names.length });`);
 }
 //#endregion
 //#region src/cli/commands/perspectives.ts
 async function perspectivesList(args) {
-	for (const arg of args) {
-		if (arg === "--help" || arg === "-h") {
-			printPerspectivesListHelp();
-			return;
-		}
-		throw new Error(`Unknown argument '${arg}'. Run 'of perspectives list --help' for usage.`);
+	const { values, positionals } = parseCommandArgs(args, {}, "of perspectives list --help");
+	if (values.help) {
+		printPerspectivesListHelp();
+		return;
 	}
+	expectPositionalCount(positionals, 0, "of perspectives list --help");
 	await runAndPrint(buildPerspectivesListScript());
 }
 function runPerspectives(args) {
@@ -661,40 +643,22 @@ Subcommands:
 Run 'of perspectives list --help' for details.`);
 }
 //#endregion
-//#region src/types/index.ts
-const PROJECT_STATUS_MAP = {
-	active: "active status",
-	"on-hold": "on hold status",
-	done: "done status",
-	dropped: "dropped status"
-};
-const VALID_PROJECT_STATUSES = Object.keys(PROJECT_STATUS_MAP);
-function mapProjectStatus(status) {
-	const mapped = PROJECT_STATUS_MAP[status];
-	if (!mapped) throw new Error(`Invalid status '${status}'. Must be one of: ${VALID_PROJECT_STATUSES.join(", ")}`);
-	return mapped;
-}
-//#endregion
 //#region src/jxa/scripts/projects-list.ts
-const SCRIPT$3 = wrapJxaScript(`
-    var argv = getArgv();
-    var opts = JSON.parse(argv[argv.length - 1]);
-    var projects = doc.flattenedProjects();
+const SCRIPT$3 = wrapOmniScript(`
+    var targetStatus = input.status ? resolveProjectStatus(input.status) : null;
+    var projects = flattenedProjects;
     var result = [];
     var total = 0;
 
     for (var i = 0; i < projects.length; i++) {
       var p = projects[i];
 
-      if (opts.status) {
-        var pStatus = String(p.status());
-        if (pStatus !== opts.status) continue;
-      }
+      if (targetStatus && p.status !== targetStatus) continue;
 
-      if (opts.folder) {
-        var folder = p.parentFolder();
-        var folderName = folder ? folder.name() : null;
-        if (folderName !== opts.folder) continue;
+      if (input.folder) {
+        var folder = p.parentFolder;
+        var folderName = folder ? folder.name : null;
+        if (folderName !== input.folder) continue;
       }
 
       total++;
@@ -705,32 +669,29 @@ const SCRIPT$3 = wrapJxaScript(`
 
     return JSON.stringify({ success: true, projects: result, totalCount: total });`);
 function buildProjectsListArgs(options) {
-	const opts = {};
-	if (options.status) opts.status = mapProjectStatus(options.status);
-	if (options.folder) opts.folder = options.folder;
-	return { args: [JSON.stringify(opts)] };
+	const payload = {};
+	if (options.status) payload.status = options.status;
+	if (options.folder) payload.folder = options.folder;
+	return buildJsonArgs(payload);
 }
 //#endregion
 //#region src/jxa/scripts/projects-show.ts
-const SCRIPT$2 = wrapJxaScript(`
-    var argv = getArgv();
-    var opts = JSON.parse(argv[argv.length - 1]);
-    var projectName = opts.name;
-    var project = findProject(doc, projectName);
+const SCRIPT$2 = wrapOmniScript(`
+    var project = flattenedProjects.byName(input.name);
 
     if (!project) {
-      return JSON.stringify({ success: false, error: "Project not found: " + projectName });
+      return JSON.stringify({ success: false, error: "Project not found: " + input.name });
     }
 
-    var projectData = opts.detailed ? formatProjectDetail(project) : formatProjectBrief(project);
+    var projectData = input.detailed ? formatProjectDetail(project) : formatProjectBrief(project);
     var response = { success: true, project: projectData };
 
-    if (opts.includeTasks) {
-      var tasks = project.flattenedTasks();
+    if (input.includeTasks) {
+      var tasks = project.flattenedTasks;
       var taskList = [];
       for (var i = 0; i < tasks.length && taskList.length < 50; i++) {
-        if (!tasks[i].completed()) {
-          taskList.push(opts.detailed ? formatTaskDetail(tasks[i]) : formatTaskBrief(tasks[i]));
+        if (isTaskActive(tasks[i])) {
+          taskList.push(input.detailed ? formatTaskDetail(tasks[i]) : formatTaskBrief(tasks[i]));
         }
       }
       response.tasks = taskList;
@@ -738,185 +699,143 @@ const SCRIPT$2 = wrapJxaScript(`
 
     return JSON.stringify(response);`);
 function buildProjectsShowArgs(options) {
-	return { args: [JSON.stringify(options)] };
+	return buildJsonArgs(options);
 }
 //#endregion
 //#region src/jxa/scripts/projects-add.ts
-const SCRIPT$1 = wrapJxaScript(`
-    var argv = getArgv();
-    var projectName = argv[argv.length - 2];
-    var opts = JSON.parse(argv[argv.length - 1]);
-
-    var project = app.Project({ name: projectName });
-
-    if (opts.folder) {
-      var folder = findFolder(doc, opts.folder);
+const SCRIPT$1 = wrapOmniScript(`
+    var folder = null;
+    if (input.folder) {
+      folder = flattenedFolders.byName(input.folder);
       if (!folder) {
-        return JSON.stringify({ success: false, error: "Folder not found: " + opts.folder });
+        return JSON.stringify({ success: false, error: "Folder not found: " + input.folder });
       }
-      folder.projects.push(project);
-    } else {
-      doc.projects.push(project);
     }
 
-    if (opts.dueDate) {
-      var due = parseDate(opts.dueDate);
-      if (due) project.dueDate = due;
-    }
-    if (opts.deferDate) {
-      var defer = parseDate(opts.deferDate);
-      if (defer) project.deferDate = defer;
-    }
-    if (opts.flagged !== undefined) {
-      project.flagged = opts.flagged;
-    }
-    if (opts.note) {
-      project.note = opts.note;
-    }
-    if (opts.sequential !== undefined) {
-      project.sequential = opts.sequential;
-    }
-    if (opts.tags && opts.tags.length > 0) {
-      for (var i = 0; i < opts.tags.length; i++) {
-        var tag = findTag(doc, opts.tags[i]);
-        if (tag) {
-          app.add(tag, { to: project.tags });
-        }
-      }
-    }
+    var tags = input.tags && input.tags.length > 0 ? resolveTags(input.tags) : [];
+
+    var project = folder ? new Project(input.name, folder.ending) : new Project(input.name);
+
+    if (input.dueDate) project.dueDate = new Date(input.dueDate);
+    if (input.deferDate) project.deferDate = new Date(input.deferDate);
+    if (input.flagged !== undefined) project.flagged = input.flagged;
+    if (input.note !== undefined) project.note = input.note;
+    if (input.sequential !== undefined) project.sequential = input.sequential;
+    if (tags.length > 0) project.addTags(tags);
 
     return JSON.stringify({ success: true, project: formatProjectBrief(project) });`);
 function buildProjectsAddArgs(name, options) {
-	return { args: [name, JSON.stringify(options)] };
+	return buildJsonArgs({
+		name,
+		...options
+	});
 }
 //#endregion
 //#region src/jxa/scripts/projects-status.ts
-const SCRIPT = wrapJxaScript(`
-    var argv = getArgv();
-    var projectName = argv[argv.length - 2];
-    var newStatus = argv[argv.length - 1];
-    var project = findProject(doc, projectName);
+const SCRIPT = wrapOmniScript(`
+    var project = flattenedProjects.byName(input.name);
 
     if (!project) {
-      return JSON.stringify({ success: false, error: "Project not found: " + projectName });
+      return JSON.stringify({ success: false, error: "Project not found: " + input.name });
     }
 
-    project.status = newStatus;
+    project.status = resolveProjectStatus(input.status);
 
     return JSON.stringify({ success: true, project: formatProjectBrief(project) });`);
 function buildProjectsStatusArgs(name, status) {
-	return { args: [name, mapProjectStatus(status)] };
+	return buildJsonArgs({
+		name,
+		status
+	});
+}
+//#endregion
+//#region src/types/index.ts
+const VALID_PROJECT_STATUSES = [
+	"active",
+	"on-hold",
+	"done",
+	"dropped"
+];
+function parseProjectStatus(status) {
+	if (VALID_PROJECT_STATUSES.includes(status)) return status;
+	throw new Error(`Invalid status '${status}'. Must be one of: ${VALID_PROJECT_STATUSES.join(", ")}`);
 }
 //#endregion
 //#region src/cli/commands/projects.ts
 async function projectsList(args) {
-	let status;
-	let folder;
-	for (let i = 0; i < args.length; i++) {
-		const arg = args[i];
-		switch (arg) {
-			case "--status":
-				status = requireFlagValue("--status", args, ++i);
-				break;
-			case "--folder":
-				folder = requireFlagValue("--folder", args, ++i);
-				break;
-			case "--help":
-			case "-h":
-				printProjectsListHelp();
-				return;
-			default: throw new Error(`Unknown argument '${arg}'. Run 'of projects list --help' for usage.`);
-		}
+	const { values, positionals } = parseCommandArgs(args, {
+		status: { type: "string" },
+		folder: { type: "string" }
+	}, "of projects list --help");
+	if (values.help) {
+		printProjectsListHelp();
+		return;
 	}
+	expectPositionalCount(positionals, 0, "of projects list --help");
 	await runAndPrint(SCRIPT$3, buildProjectsListArgs({
-		status,
-		folder
+		status: values.status !== void 0 ? parseProjectStatus(values.status) : void 0,
+		folder: values.folder
 	}));
 }
 async function projectsShow(args) {
-	let name = "";
-	let detailed = false;
-	let includeTasks = false;
-	for (let i = 0; i < args.length; i++) {
-		const arg = args[i];
-		switch (arg) {
-			case "--detailed":
-				detailed = true;
-				break;
-			case "--tasks":
-				includeTasks = true;
-				break;
-			case "--help":
-			case "-h":
-				printProjectsShowHelp();
-				return;
-			default: name = requirePositionalArg(args, arg, name, "of projects show --help");
-		}
+	const { values, positionals } = parseCommandArgs(args, {
+		detailed: { type: "boolean" },
+		tasks: { type: "boolean" }
+	}, "of projects show --help");
+	if (values.help) {
+		printProjectsShowHelp();
+		return;
 	}
+	expectPositionalCount(positionals, 1, "of projects show --help");
+	const name = positionals[0];
 	if (!name) throw new Error("Project name is required. Run 'of projects show --help' for usage.");
 	await runAndPrint(SCRIPT$2, buildProjectsShowArgs({
 		name,
-		detailed,
-		includeTasks
+		detailed: Boolean(values.detailed),
+		includeTasks: Boolean(values.tasks)
 	}));
 }
 async function projectsAdd(args) {
-	let name = "";
-	const options = {};
-	const tags = [];
-	for (let i = 0; i < args.length; i++) {
-		const arg = args[i];
-		switch (arg) {
-			case "--due":
-				options.dueDate = requireFlagValue("--due", args, ++i);
-				break;
-			case "--defer":
-				options.deferDate = requireFlagValue("--defer", args, ++i);
-				break;
-			case "--flagged":
-				options.flagged = true;
-				break;
-			case "--note":
-				options.note = requireFlagValue("--note", args, ++i);
-				break;
-			case "--sequential":
-				options.sequential = true;
-				break;
-			case "--tag":
-				tags.push(requireFlagValue("--tag", args, ++i));
-				break;
-			case "--folder":
-				options.folder = requireFlagValue("--folder", args, ++i);
-				break;
-			case "--help":
-			case "-h":
-				printProjectsAddHelp();
-				return;
-			default: name = requirePositionalArg(args, arg, name, "of projects add --help");
-		}
+	const { values, positionals } = parseCommandArgs(args, {
+		due: { type: "string" },
+		defer: { type: "string" },
+		flagged: { type: "boolean" },
+		note: { type: "string" },
+		sequential: { type: "boolean" },
+		tag: {
+			type: "string",
+			multiple: true
+		},
+		folder: { type: "string" }
+	}, "of projects add --help");
+	if (values.help) {
+		printProjectsAddHelp();
+		return;
 	}
+	expectPositionalCount(positionals, 1, "of projects add --help");
+	const name = positionals[0];
 	if (!name) throw new Error("Project name is required. Run 'of projects add --help' for usage.");
-	if (tags.length > 0) options.tags = tags;
+	const options = {};
+	if (values.due !== void 0) options.dueDate = parseDateToIso(values.due);
+	if (values.defer !== void 0) options.deferDate = parseDateToIso(values.defer);
+	if (values.flagged) options.flagged = true;
+	if (values.note !== void 0) options.note = values.note;
+	if (values.sequential) options.sequential = true;
+	if (values.tag && values.tag.length > 0) options.tags = values.tag;
+	if (values.folder !== void 0) options.folder = values.folder;
 	await runAndPrint(SCRIPT$1, buildProjectsAddArgs(name, options));
 }
 async function projectsStatus(args) {
-	let name = "";
-	let status = "";
-	for (let i = 0; i < args.length; i++) {
-		const arg = args[i];
-		if (arg === "--help" || arg === "-h") {
-			printProjectsStatusHelp();
-			return;
-		}
-		if (arg.startsWith("-")) throw new Error(`Unknown flag '${arg}'. Run 'of projects status --help' for usage.`);
-		if (!name) name = arg;
-		else if (!status) status = arg;
-		else throw new Error(`Unexpected argument '${arg}'. Run 'of projects status --help' for usage.`);
+	const { values, positionals } = parseCommandArgs(args, {}, "of projects status --help");
+	if (values.help) {
+		printProjectsStatusHelp();
+		return;
 	}
+	expectPositionalCount(positionals, 2, "of projects status --help");
+	const [name, rawStatus] = positionals;
 	if (!name) throw new Error("Project name is required. Run 'of projects status --help' for usage.");
-	if (!status) throw new Error("Status is required. Run 'of projects status --help' for usage.");
-	if (!VALID_PROJECT_STATUSES.includes(status)) throw new Error(`Invalid status '${status}'. Must be one of: ${VALID_PROJECT_STATUSES.join(", ")}`);
-	await runAndPrint(SCRIPT, buildProjectsStatusArgs(name, status));
+	if (!rawStatus) throw new Error("Status is required. Run 'of projects status --help' for usage.");
+	await runAndPrint(SCRIPT, buildProjectsStatusArgs(name, parseProjectStatus(rawStatus)));
 }
 function runProjects(args) {
 	const sub = args[0];
@@ -1020,7 +939,7 @@ Commands:
   task search <keyword> [options]      Search tasks
   tasks flagged                        List flagged tasks
   tasks overdue                        List overdue tasks
-  tasks today                          List tasks due today
+  tasks today                          List tasks due today (including overdue)
   perspectives list                    List all perspectives
   projects list [options]              List projects
   projects show <name> [options]       Show project details
@@ -1052,10 +971,7 @@ async function main(args) {
 		case void 0:
 			console.log(HELP_TEXT);
 			break;
-		default:
-			console.error(`Error: Unknown command '${cmd}'`);
-			console.error(HELP_TEXT);
-			process.exit(1);
+		default: throw new Error(`Unknown command '${cmd}'. Run 'of --help' for usage.`);
 	}
 }
 //#endregion

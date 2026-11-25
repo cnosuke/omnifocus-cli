@@ -15,7 +15,7 @@ Commands:
   task search <keyword> [options]      Search tasks
   tasks flagged                        List flagged tasks
   tasks overdue                        List overdue tasks
-  tasks today                          List tasks due today
+  tasks today                          List tasks due today (including overdue)
   perspectives list                    List all perspectives
   projects list [options]              List projects
   projects show <name> [options]       Show project details
@@ -50,8 +50,6 @@ export async function main(args: string[]): Promise<void> {
       console.log(HELP_TEXT);
       break;
     default:
-      console.error(`Error: Unknown command '${cmd}'`);
-      console.error(HELP_TEXT);
-      process.exit(1);
+      throw new Error(`Unknown command '${cmd}'. Run 'of --help' for usage.`);
   }
 }

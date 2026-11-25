@@ -1,26 +1,31 @@
 import { runAndPrint } from '../run-and-print.js';
+import { expectPositionalCount, parseCommandArgs } from '../arg-utils.js';
 import {
   buildTasksFlaggedScript,
   buildTasksOverdueScript,
   buildTasksTodayScript,
 } from '../../jxa/scripts/tasks-filter.js';
+import type { TaskBrief, TasksListResponse } from '../../types/index.js';
 
 async function runSimpleTasksCommand(
   args: string[],
   commandName: string,
+  description: string,
   buildScript: () => string,
 ): Promise<void> {
-  for (const arg of args) {
-    if (arg === '--help' || arg === '-h') {
-      console.log(
-        `Usage: of tasks ${commandName}\n\nList ${commandName} tasks.\n\nExamples:\n  of tasks ${commandName}`,
-      );
-      return;
-    }
-    throw new Error(`Unknown argument '${arg}'. Run 'of tasks ${commandName} --help' for usage.`);
+  const helpCommand = `of tasks ${commandName} --help`;
+  const { values, positionals } = parseCommandArgs(args, {}, helpCommand);
+
+  if (values.help) {
+    console.log(
+      `Usage: of tasks ${commandName}\n\n${description}\n\nExamples:\n  of tasks ${commandName}`,
+    );
+    return;
   }
 
-  await runAndPrint(buildScript());
+  expectPositionalCount(positionals, 0, helpCommand);
+
+  await runAndPrint<TasksListResponse<TaskBrief>>(buildScript());
 }
 
 export function runTasks(args: string[]): Promise<void> {
@@ -28,11 +33,26 @@ export function runTasks(args: string[]): Promise<void> {
 
   switch (sub) {
     case 'flagged':
-      return runSimpleTasksCommand(args.slice(1), 'flagged', buildTasksFlaggedScript);
+      return runSimpleTasksCommand(
+        args.slice(1),
+        'flagged',
+        'List flagged tasks.',
+        buildTasksFlaggedScript,
+      );
     case 'overdue':
-      return runSimpleTasksCommand(args.slice(1), 'overdue', buildTasksOverdueScript);
+      return runSimpleTasksCommand(
+        args.slice(1),
+        'overdue',
+        'List overdue tasks.',
+        buildTasksOverdueScript,
+      );
     case 'today':
-      return runSimpleTasksCommand(args.slice(1), 'today', buildTasksTodayScript);
+      return runSimpleTasksCommand(
+        args.slice(1),
+        'today',
+        'List tasks due today (including overdue tasks).',
+        buildTasksTodayScript,
+      );
     case '--help':
     case '-h':
       printTasksHelp();
@@ -48,7 +68,7 @@ function printTasksHelp(): void {
 Subcommands:
   flagged    List flagged tasks
   overdue    List overdue tasks
-  today      List tasks due today
+  today      List tasks due today (including overdue)
 
 Run 'of tasks <subcommand> --help' for details.`);
 }

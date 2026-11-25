@@ -1,12 +1,8 @@
-import { wrapJxaScript } from '../helpers.js';
+import { wrapOmniScript } from '../helpers.js';
 
 export function buildPerspectivesListScript(): string {
-  return wrapJxaScript(`
-    var names = doc.perspectiveNames();
-    var result = [];
-    for (var i = 0; i < names.length; i++) {
-      result.push(names[i]);
-    }
+  return wrapOmniScript(`
+    var names = Perspective.all.map(function(p) { return p.name; });
 
-    return JSON.stringify({ success: true, perspectiveNames: result, totalCount: result.length });`);
+    return JSON.stringify({ success: true, perspectiveNames: names, totalCount: names.length });`);
 }

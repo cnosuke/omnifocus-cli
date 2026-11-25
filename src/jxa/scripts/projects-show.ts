@@ -1,25 +1,23 @@
-import { wrapJxaScript, DEFAULT_TASK_LIMIT } from '../helpers.js';
+import { buildJsonArgs, DEFAULT_TASK_LIMIT, wrapOmniScript } from '../helpers.js';
 import type { JxaRunnerOptions } from '../types.js';
+import type { ProjectsShowOptions } from '../../types/index.js';
 
-const SCRIPT = wrapJxaScript(`
-    var argv = getArgv();
-    var opts = JSON.parse(argv[argv.length - 1]);
-    var projectName = opts.name;
-    var project = findProject(doc, projectName);
+const SCRIPT = wrapOmniScript(`
+    var project = flattenedProjects.byName(input.name);
 
     if (!project) {
-      return JSON.stringify({ success: false, error: "Project not found: " + projectName });
+      return JSON.stringify({ success: false, error: "Project not found: " + input.name });
     }
 
-    var projectData = opts.detailed ? formatProjectDetail(project) : formatProjectBrief(project);
+    var projectData = input.detailed ? formatProjectDetail(project) : formatProjectBrief(project);
     var response = { success: true, project: projectData };
 
-    if (opts.includeTasks) {
-      var tasks = project.flattenedTasks();
+    if (input.includeTasks) {
+      var tasks = project.flattenedTasks;
       var taskList = [];
       for (var i = 0; i < tasks.length && taskList.length < ${DEFAULT_TASK_LIMIT}; i++) {
-        if (!tasks[i].completed()) {
-          taskList.push(opts.detailed ? formatTaskDetail(tasks[i]) : formatTaskBrief(tasks[i]));
+        if (isTaskActive(tasks[i])) {
+          taskList.push(input.detailed ? formatTaskDetail(tasks[i]) : formatTaskBrief(tasks[i]));
         }
       }
       response.tasks = taskList;
@@ -27,14 +25,8 @@ const SCRIPT = wrapJxaScript(`
 
     return JSON.stringify(response);`);
 
-export interface ProjectsShowOptions {
-  name: string;
-  detailed?: boolean;
-  includeTasks?: boolean;
-}
-
 export function buildProjectsShowArgs(options: ProjectsShowOptions): JxaRunnerOptions {
-  return { args: [JSON.stringify(options)] };
+  return buildJsonArgs(options);
 }
 
 export { SCRIPT as PROJECTS_SHOW_SCRIPT };

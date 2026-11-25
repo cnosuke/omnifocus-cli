@@ -1,54 +1,31 @@
-import { wrapJxaScript } from '../helpers.js';
+import { buildJsonArgs, wrapOmniScript } from '../helpers.js';
 import type { JxaRunnerOptions } from '../types.js';
 import type { ProjectAddOptions } from '../../types/index.js';
 
-const SCRIPT = wrapJxaScript(`
-    var argv = getArgv();
-    var projectName = argv[argv.length - 2];
-    var opts = JSON.parse(argv[argv.length - 1]);
-
-    var project = app.Project({ name: projectName });
-
-    if (opts.folder) {
-      var folder = findFolder(doc, opts.folder);
+const SCRIPT = wrapOmniScript(`
+    var folder = null;
+    if (input.folder) {
+      folder = flattenedFolders.byName(input.folder);
       if (!folder) {
-        return JSON.stringify({ success: false, error: "Folder not found: " + opts.folder });
+        return JSON.stringify({ success: false, error: "Folder not found: " + input.folder });
       }
-      folder.projects.push(project);
-    } else {
-      doc.projects.push(project);
     }
 
-    if (opts.dueDate) {
-      var due = parseDate(opts.dueDate);
-      if (due) project.dueDate = due;
-    }
-    if (opts.deferDate) {
-      var defer = parseDate(opts.deferDate);
-      if (defer) project.deferDate = defer;
-    }
-    if (opts.flagged !== undefined) {
-      project.flagged = opts.flagged;
-    }
-    if (opts.note) {
-      project.note = opts.note;
-    }
-    if (opts.sequential !== undefined) {
-      project.sequential = opts.sequential;
-    }
-    if (opts.tags && opts.tags.length > 0) {
-      for (var i = 0; i < opts.tags.length; i++) {
-        var tag = findTag(doc, opts.tags[i]);
-        if (tag) {
-          app.add(tag, { to: project.tags });
-        }
-      }
-    }
+    var tags = input.tags && input.tags.length > 0 ? resolveTags(input.tags) : [];
+
+    var project = folder ? new Project(input.name, folder.ending) : new Project(input.name);
+
+    if (input.dueDate) project.dueDate = new Date(input.dueDate);
+    if (input.deferDate) project.deferDate = new Date(input.deferDate);
+    if (input.flagged !== undefined) project.flagged = input.flagged;
+    if (input.note !== undefined) project.note = input.note;
+    if (input.sequential !== undefined) project.sequential = input.sequential;
+    if (tags.length > 0) project.addTags(tags);
 
     return JSON.stringify({ success: true, project: formatProjectBrief(project) });`);
 
 export function buildProjectsAddArgs(name: string, options: ProjectAddOptions): JxaRunnerOptions {
-  return { args: [name, JSON.stringify(options)] };
+  return buildJsonArgs({ name, ...options });
 }
 
 export { SCRIPT as PROJECTS_ADD_SCRIPT };

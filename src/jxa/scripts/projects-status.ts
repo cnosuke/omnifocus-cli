@@ -1,23 +1,20 @@
-import { wrapJxaScript } from '../helpers.js';
+import { buildJsonArgs, wrapOmniScript } from '../helpers.js';
 import type { JxaRunnerOptions } from '../types.js';
-import { mapProjectStatus } from '../../types/index.js';
+import type { ProjectStatus } from '../../types/index.js';
 
-const SCRIPT = wrapJxaScript(`
-    var argv = getArgv();
-    var projectName = argv[argv.length - 2];
-    var newStatus = argv[argv.length - 1];
-    var project = findProject(doc, projectName);
+const SCRIPT = wrapOmniScript(`
+    var project = flattenedProjects.byName(input.name);
 
     if (!project) {
-      return JSON.stringify({ success: false, error: "Project not found: " + projectName });
+      return JSON.stringify({ success: false, error: "Project not found: " + input.name });
     }
 
-    project.status = newStatus;
+    project.status = resolveProjectStatus(input.status);
 
     return JSON.stringify({ success: true, project: formatProjectBrief(project) });`);
 
-export function buildProjectsStatusArgs(name: string, status: string): JxaRunnerOptions {
-  return { args: [name, mapProjectStatus(status)] };
+export function buildProjectsStatusArgs(name: string, status: ProjectStatus): JxaRunnerOptions {
+  return buildJsonArgs({ name, status });
 }
 
 export { SCRIPT as PROJECTS_STATUS_SCRIPT };

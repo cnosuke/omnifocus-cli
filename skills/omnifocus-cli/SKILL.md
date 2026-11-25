@@ -43,6 +43,7 @@ of task add "Deploy" --tag urgent --tag ops
 ```
 
 **Options:**
+
 - `--project <name>` -- Assign to project
 - `--due <date>` -- Due date
 - `--defer <date>` -- Defer date
@@ -105,25 +106,24 @@ of projects status "Paused Project" on-hold
 
 ## Date Formats
 
-| Format | Example | Description |
-|--------|---------|-------------|
-| `today` | `--due today` | Today at 17:00 |
-| `tomorrow` | `--due tomorrow` | Tomorrow at 17:00 |
-| `next week` | `--due "next week"` | 7 days from now |
-| `+Nd` | `--due +3d` | N days from now |
-| `+Nw` | `--due +2w` | N weeks from now |
-| ISO 8601 | `--due 2026-03-15` | Specific date |
+| Format      | Example             | Description       |
+| ----------- | ------------------- | ----------------- |
+| `today`     | `--due today`       | Today at 17:00    |
+| `tomorrow`  | `--due tomorrow`    | Tomorrow at 17:00 |
+| `next week` | `--due "next week"` | 7 days from now   |
+| `+Nd`       | `--due +3d`         | N days from now   |
+| `+Nw`       | `--due +2w`         | N weeks from now  |
+| ISO 8601    | `--due 2026-03-15`  | Specific date     |
 
 ## Output
 
-All commands return JSON. Parse with `jq` if needed.
+All commands output pretty-printed JSON to stdout on success. On failure, `Error: ...` is written to stderr with exit code `1`.
 
 ```json
 {"success": true, "tasks": [...], "totalCount": 5}
 {"success": true, "task": {"id": "abc123", "name": "Buy milk"}}
 {"success": true, "projects": [...], "totalCount": 3}
-{"success": true, "perspectives": ["Inbox", "Forecast", ...]}
-{"success": false, "error": "OmniFocus is not running"}
+{"success": true, "perspectiveNames": ["Inbox", "Forecast", ...], "totalCount": 2}
 ```
 
 ## Guidelines
