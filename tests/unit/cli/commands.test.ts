@@ -9,6 +9,9 @@ import { runTask } from '../../../src/cli/commands/task.js';
 import { runTasks } from '../../../src/cli/commands/tasks.js';
 import { runPerspectives } from '../../../src/cli/commands/perspectives.js';
 import { runProjects } from '../../../src/cli/commands/projects.js';
+import { runReview } from '../../../src/cli/commands/review.js';
+import { runTags } from '../../../src/cli/commands/tags.js';
+import { runFolders } from '../../../src/cli/commands/folders.js';
 import { runJxa } from '../../../src/jxa/runner.js';
 
 const mockRunJxa = vi.mocked(runJxa);
@@ -90,6 +93,43 @@ describe('task commands', () => {
     expect(payload.dueDate).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
   });
 
+  it('task add supports --parent, --sequential, --repeat, and rejects conflicting flags', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    mockJxaResult({
+      success: true,
+      task: { id: '1', name: 'Sub', dueDate: null, flagged: false, completed: false },
+    });
+
+    await runTask([
+      'add',
+      'Sub',
+      '--parent',
+      'p1',
+      '--sequential',
+      '--repeat',
+      'FREQ=WEEKLY;INTERVAL=1',
+      '--repeat-method',
+      'due-date',
+    ]);
+    const payload = JSON.parse(mockRunJxa.mock.calls[0][1]!.args![0]);
+    expect(payload).toEqual({
+      name: 'Sub',
+      parentId: 'p1',
+      sequential: true,
+      repetitionRule: { ruleString: 'FREQ=WEEKLY;INTERVAL=1', method: 'due-date' },
+    });
+
+    await expect(runTask(['add', 'X', '--project', 'Work', '--parent', 'p1'])).rejects.toThrow(
+      'Cannot combine --project and --parent',
+    );
+    await expect(runTask(['add', 'X', '--repeat-method', 'fixed'])).rejects.toThrow(
+      '--repeat-method requires --repeat',
+    );
+    await expect(
+      runTask(['add', 'X', '--repeat', 'FREQ=DAILY', '--repeat-method', 'bad']),
+    ).rejects.toThrow("Invalid repeat method 'bad'");
+  });
+
   it('task add with tags', async () => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
     mockJxaResult({
@@ -123,20 +163,104 @@ describe('task commands', () => {
     await expect(runTask(['add', 'Test', '--project'])).rejects.toThrow('--project');
   });
 
-  it('task complete requires id', async () => {
-    await expect(runTask(['complete'])).rejects.toThrow('Task ID is required');
+  it('task show requires id and passes --children', async () => {
+    await expect(runTask(['show'])).rejects.toThrow('Task ID is required');
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    mockJxaResult({ success: true, task: { id: 't1', name: 'A' }, children: [] });
+
+    await runTask(['show', 't1', '--children']);
+    expect(JSON.parse(mockRunJxa.mock.calls[0][1]!.args![0])).toEqual({
+      taskId: 't1',
+      includeChildren: true,
+    });
   });
 
-  it('task complete passes taskId in JSON payload', async () => {
+  it('task update validates options, mutual exclusivity, and builds payload', async () => {
+    await expect(runTask(['update'])).rejects.toThrow('Task ID is required');
+    await expect(runTask(['update', 't1'])).rejects.toThrow('At least one update option');
+    await expect(runTask(['update', 't1', '--due', 'today', '--clear-due'])).rejects.toThrow(
+      'Cannot combine --due and --clear-due',
+    );
+    await expect(runTask(['update', 't1', '--project', 'Work', '--inbox'])).rejects.toThrow(
+      'Cannot combine --project and --inbox',
+    );
+    await expect(runTask(['update', 't1', '--flagged', '--unflagged'])).rejects.toThrow(
+      'Cannot combine --flagged and --unflagged',
+    );
+
     vi.spyOn(console, 'log').mockImplementation(() => {});
-    mockJxaResult({
-      success: true,
-      task: { id: 'abc123', name: 'Done', completed: true },
+    mockJxaResult({ success: true, task: { id: 't1', name: 'Renamed' } });
+
+    await runTask([
+      'update',
+      't1',
+      '--name',
+      'Renamed',
+      '--append-note',
+      '\nMore',
+      '--clear-due',
+      '--defer',
+      'tomorrow',
+      '--clear-estimate',
+      '--unflagged',
+      '--add-tag',
+      '@PC',
+      '--remove-tag',
+      'old',
+      '--project',
+      'Work',
+      '--clear-repeat',
+    ]);
+    const payload = JSON.parse(mockRunJxa.mock.calls[0][1]!.args![0]);
+    expect(payload).toMatchObject({
+      taskId: 't1',
+      name: 'Renamed',
+      appendNote: '\nMore',
+      dueDate: null,
+      estimatedMinutes: null,
+      flagged: false,
+      addTags: ['@PC'],
+      removeTags: ['old'],
+      moveToProject: 'Work',
+      repetitionRule: null,
+    });
+    expect(payload.deferDate).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+  });
+
+  it('task complete and uncomplete pass taskId', async () => {
+    await expect(runTask(['complete'])).rejects.toThrow('Task ID is required');
+    await expect(runTask(['uncomplete'])).rejects.toThrow('Task ID is required');
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    mockJxaResult({ success: true, task: { id: 'abc123', name: 'Done', completed: true } });
+    await runTask(['complete', 'abc123']);
+    expect(JSON.parse(mockRunJxa.mock.calls[0][1]!.args![0])).toEqual({ taskId: 'abc123' });
+
+    mockJxaResult({ success: true, task: { id: 'abc123', name: 'Done', completed: false } });
+    await runTask(['uncomplete', 'abc123']);
+    expect(JSON.parse(mockRunJxa.mock.calls[1][1]!.args![0])).toEqual({ taskId: 'abc123' });
+  });
+
+  it('task drop, delete, and to-project pass expected payloads', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    mockJxaResult({ success: true, task: { id: 't1', name: 'Drop', dropped: true } });
+    await runTask(['drop', 't1', '--all-occurrences']);
+    expect(JSON.parse(mockRunJxa.mock.calls[0][1]!.args![0])).toEqual({
+      taskId: 't1',
+      allOccurrences: true,
     });
 
-    await runTask(['complete', 'abc123']);
-    const [_script, options] = mockRunJxa.mock.calls[0];
-    expect(JSON.parse(options!.args![0])).toEqual({ taskId: 'abc123' });
+    mockJxaResult({ success: true, deleted: { id: 't1', name: 'Del' } });
+    await runTask(['delete', 't1']);
+    expect(JSON.parse(mockRunJxa.mock.calls[1][1]!.args![0])).toEqual({ taskId: 't1' });
+
+    mockJxaResult({ success: true, project: { id: 'p1', name: 'Proj' } });
+    await runTask(['to-project', 't1', '--folder', 'Work']);
+    expect(JSON.parse(mockRunJxa.mock.calls[2][1]!.args![0])).toEqual({
+      taskId: 't1',
+      folder: 'Work',
+    });
   });
 
   it('task search requires keyword', async () => {
@@ -175,6 +299,72 @@ describe('task commands', () => {
 });
 
 describe('tasks commands', () => {
+  it('tasks list passes filter payload and validates status / completed-since', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    mockJxaResult({ success: true, tasks: [], totalCount: 0 });
+
+    await runTasks([
+      'list',
+      '--status',
+      'next',
+      '--tag',
+      '@PC',
+      '--tag',
+      'Quick',
+      '--project',
+      'Work',
+      '--flagged',
+      '--max-estimate',
+      '30',
+      '--due-before',
+      '+3d',
+      '--detailed',
+      '--limit',
+      '20',
+    ]);
+    const payload = JSON.parse(mockRunJxa.mock.calls[0][1]!.args![0]);
+    expect(payload).toMatchObject({
+      status: 'next',
+      tags: ['@PC', 'Quick'],
+      project: 'Work',
+      flagged: true,
+      maxEstimate: 30,
+      detailed: true,
+      limit: 20,
+    });
+    expect(payload.dueBefore).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+
+    // --completed-since implies status: completed
+    await runTasks(['list', '--completed-since', '7d ago']);
+    const completedPayload = JSON.parse(mockRunJxa.mock.calls[1][1]!.args![0]);
+    expect(completedPayload.status).toBe('completed');
+    expect(completedPayload.completedSince).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+
+    await runTasks(['list', '--completed-since=-7d']);
+    const completedEqPayload = JSON.parse(mockRunJxa.mock.calls[2][1]!.args![0]);
+    expect(completedEqPayload.status).toBe('completed');
+    expect(completedEqPayload.completedSince).toBe(completedPayload.completedSince);
+
+    await expect(
+      runTasks(['list', '--status', 'available', '--completed-since', '7d ago']),
+    ).rejects.toThrow('--completed-since requires --status completed');
+    await expect(runTasks(['list', '--status', 'bogus'])).rejects.toThrow(
+      "Invalid task status 'bogus'",
+    );
+  });
+
+  it('tasks forecast passes days option and validates positive integer', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    mockJxaResult({ success: true, days: 3, overdue: [], due: [], deferred: [] });
+
+    await runTasks(['forecast', '--days', '3']);
+    expect(JSON.parse(mockRunJxa.mock.calls[0][1]!.args![0])).toEqual({ days: 3 });
+
+    await expect(runTasks(['forecast', '--days', '0'])).rejects.toThrow(
+      'must be a positive integer',
+    );
+  });
+
   it('tasks flagged calls runJxa', async () => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
     mockJxaResult({ success: true, tasks: [], totalCount: 0 });
@@ -258,13 +448,27 @@ describe('projects commands', () => {
     expect(JSON.parse(options!.args![0])).toEqual({});
   });
 
-  it('projects list with --status and --folder', async () => {
+  it('projects list supports --status, --folder, --stalled, --limit', async () => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
     mockJxaResult({ success: true, projects: [], totalCount: 0 });
 
-    await runProjects(['list', '--status', 'active', '--folder', 'Work']);
+    await runProjects([
+      'list',
+      '--status',
+      'active',
+      '--folder',
+      'Work',
+      '--stalled',
+      '--limit',
+      '15',
+    ]);
     const [_script, options] = mockRunJxa.mock.calls[0];
-    expect(JSON.parse(options!.args![0])).toEqual({ status: 'active', folder: 'Work' });
+    expect(JSON.parse(options!.args![0])).toEqual({
+      status: 'active',
+      folder: 'Work',
+      stalled: true,
+      limit: 15,
+    });
   });
 
   it('projects list validates status value', async () => {
@@ -294,6 +498,25 @@ describe('projects commands', () => {
     await expect(runProjects(['add'])).rejects.toThrow('Project name is required');
   });
 
+  it('projects add supports --single-actions and --review-interval', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    mockJxaResult({ success: true, project: { id: '1', name: 'Misc' } });
+
+    await runProjects(['add', 'Misc', '--single-actions', '--review-interval', '2w']);
+    expect(JSON.parse(mockRunJxa.mock.calls[0][1]!.args![0])).toEqual({
+      name: 'Misc',
+      singleActions: true,
+      reviewInterval: { steps: 2, unit: 'weeks' },
+    });
+
+    await expect(runProjects(['add', 'Bad', '--sequential', '--single-actions'])).rejects.toThrow(
+      'Cannot combine --sequential and --single-actions',
+    );
+    await expect(runProjects(['add', 'Bad', '--review-interval', '0w'])).rejects.toThrow(
+      'Invalid review interval',
+    );
+  });
+
   it('projects add passes name and normalized options', async () => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
     mockJxaResult({ success: true, project: { id: '1', name: 'New' } });
@@ -314,17 +537,42 @@ describe('projects commands', () => {
     expect(mockRunJxa).not.toHaveBeenCalled();
   });
 
-  it('projects add with tags and sequential', async () => {
-    vi.spyOn(console, 'log').mockImplementation(() => {});
-    mockJxaResult({ success: true, project: { id: '1', name: 'Test' } });
+  it('projects update validates options and builds payload', async () => {
+    await expect(runProjects(['update'])).rejects.toThrow('Project name is required');
+    await expect(runProjects(['update', 'API'])).rejects.toThrow('At least one update option');
+    await expect(runProjects(['update', 'API', '--folder', 'Work', '--top-level'])).rejects.toThrow(
+      'Cannot combine --folder and --top-level',
+    );
+    await expect(runProjects(['update', 'API', '--sequential', '--parallel'])).rejects.toThrow(
+      'Cannot combine --sequential and --parallel',
+    );
 
-    await runProjects(['add', 'Test', '--tag', 'work', '--tag', 'urgent', '--sequential']);
-    const [_script, options] = mockRunJxa.mock.calls[0];
-    expect(JSON.parse(options!.args![0])).toEqual({
-      name: 'Test',
-      tags: ['work', 'urgent'],
-      sequential: true,
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    mockJxaResult({ success: true, project: { id: 'p1', name: 'API v2' } });
+
+    await runProjects([
+      'update',
+      'API',
+      '--name',
+      'API v2',
+      '--folder',
+      'Work',
+      '--parallel',
+      '--review-interval',
+      '1m',
+      '--next-review',
+      '2026-04-01',
+    ]);
+    const payload = JSON.parse(mockRunJxa.mock.calls[0][1]!.args![0]);
+    expect(payload).toMatchObject({
+      name: 'API',
+      newName: 'API v2',
+      folder: 'Work',
+      sequential: false,
+      singleActions: false,
+      reviewInterval: { steps: 1, unit: 'months' },
     });
+    expect(payload.nextReviewDate).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   });
 
   it('projects status requires name and status', async () => {
@@ -355,6 +603,80 @@ describe('projects commands', () => {
 
   it('projects throws on unknown subcommand', () => {
     expect(() => runProjects(['badcmd'])).toThrow("Unknown projects subcommand 'badcmd'");
+  });
+});
+
+describe('review commands', () => {
+  it('review list passes status filter and validates status', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    mockJxaResult({ success: true, projects: [], totalCount: 0 });
+
+    await runReview(['list', '--status', 'active']);
+    expect(JSON.parse(mockRunJxa.mock.calls[0][1]!.args![0])).toEqual({ status: 'active' });
+
+    await expect(runReview(['list', '--status', 'done'])).rejects.toThrow(
+      "Invalid review status 'done'",
+    );
+  });
+
+  it('review mark requires project name', async () => {
+    await expect(runReview(['mark'])).rejects.toThrow('Project name is required');
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    mockJxaResult({ success: true, project: { id: 'p1', name: 'Launch' } });
+
+    await runReview(['mark', 'Launch']);
+    expect(JSON.parse(mockRunJxa.mock.calls[0][1]!.args![0])).toEqual({ name: 'Launch' });
+  });
+});
+
+describe('tags commands', () => {
+  it('tags list, add, status pass payloads and validate', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    mockJxaResult({ success: true, tags: [], totalCount: 0 });
+    await runTags(['list', '--status', 'on-hold']);
+    expect(JSON.parse(mockRunJxa.mock.calls[0][1]!.args![0])).toEqual({ status: 'on-hold' });
+
+    mockJxaResult({ success: true, tag: { id: 'tag1', name: 'Waiting For' } });
+    await runTags(['add', 'Waiting For', '--parent', 'People', '--on-hold']);
+    expect(JSON.parse(mockRunJxa.mock.calls[1][1]!.args![0])).toEqual({
+      name: 'Waiting For',
+      parent: 'People',
+      onHold: true,
+    });
+
+    mockJxaResult({ success: true, tag: { id: 'tag1', name: 'Waiting For' } });
+    await runTags(['status', 'Waiting For', 'active']);
+    expect(JSON.parse(mockRunJxa.mock.calls[2][1]!.args![0])).toEqual({
+      name: 'Waiting For',
+      status: 'active',
+    });
+
+    await expect(runTags(['list', '--status', 'bad'])).rejects.toThrow("Invalid tag status 'bad'");
+    await expect(runTags(['add'])).rejects.toThrow('Tag name is required');
+    await expect(runTags(['status', 'Waiting For'])).rejects.toThrow('Status is required');
+  });
+});
+
+describe('folders commands', () => {
+  it('folders list and add pass payloads and validate', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    mockJxaResult({ success: true, folders: [], totalCount: 0 });
+    await runFolders(['list', '--status', 'active']);
+    expect(JSON.parse(mockRunJxa.mock.calls[0][1]!.args![0])).toEqual({ status: 'active' });
+
+    mockJxaResult({ success: true, folder: { id: 'f1', name: 'Q2' } });
+    await runFolders(['add', 'Q2', '--parent', 'Work']);
+    expect(JSON.parse(mockRunJxa.mock.calls[1][1]!.args![0])).toEqual({
+      name: 'Q2',
+      parent: 'Work',
+    });
+
+    await expect(runFolders(['list', '--status', 'on-hold'])).rejects.toThrow(
+      "Invalid folder status 'on-hold'",
+    );
+    await expect(runFolders(['add'])).rejects.toThrow('Folder name is required');
   });
 });
 
