@@ -1,26 +1,26 @@
-import { wrapJxaScript } from '../helpers.js';
+import { buildJsonArgs, wrapOmniScript } from '../helpers.js';
 import type { JxaRunnerOptions } from '../types.js';
 
-const SCRIPT = wrapJxaScript(`
-    var argv = getArgv();
-    var taskId = argv[argv.length - 1];
-    var task = findTask(doc, taskId);
+const SCRIPT = wrapOmniScript(`
+    var task = Task.byIdentifier(input.taskId);
 
     if (!task) {
-      return JSON.stringify({ success: false, error: "Task not found: " + taskId });
+      return JSON.stringify({ success: false, error: "Task not found: " + input.taskId });
     }
 
-    app.markComplete(task);
+    var completed = task.markComplete();
 
     return JSON.stringify({
       success: true,
-      task: { id: task.id(), name: task.name(), completed: task.completed() }
+      task: {
+        id: completed.id.primaryKey,
+        name: completed.name,
+        completed: completed.completed
+      }
     });`);
 
 export function buildTaskCompleteArgs(taskId: string): JxaRunnerOptions {
-  return {
-    args: [taskId],
-  };
+  return buildJsonArgs({ taskId });
 }
 
 export { SCRIPT as TASK_COMPLETE_SCRIPT };

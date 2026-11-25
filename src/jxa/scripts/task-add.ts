@@ -1,57 +1,31 @@
-import { wrapJxaScript } from '../helpers.js';
+import { buildJsonArgs, wrapOmniScript } from '../helpers.js';
 import type { JxaRunnerOptions } from '../types.js';
 import type { TaskAddOptions } from '../../types/index.js';
 
-const SCRIPT = wrapJxaScript(`
-    var argv = getArgv();
-    var taskName = argv[argv.length - 2];
-    var opts = JSON.parse(argv[argv.length - 1]);
-    var task;
-
-    if (opts.project) {
-      var project = findProject(doc, opts.project);
+const SCRIPT = wrapOmniScript(`
+    var project = null;
+    if (input.project) {
+      project = flattenedProjects.byName(input.project);
       if (!project) {
-        return JSON.stringify({ success: false, error: "Project not found: " + opts.project });
+        return JSON.stringify({ success: false, error: "Project not found: " + input.project });
       }
-      task = app.Task({ name: taskName });
-      project.rootTask.tasks.push(task);
-    } else {
-      task = app.InboxTask({ name: taskName });
-      doc.inboxTasks.push(task);
     }
 
-    if (opts.dueDate) {
-      var due = parseDate(opts.dueDate);
-      if (due) task.dueDate = due;
-    }
-    if (opts.deferDate) {
-      var defer = parseDate(opts.deferDate);
-      if (defer) task.deferDate = defer;
-    }
-    if (opts.flagged !== undefined) {
-      task.flagged = opts.flagged;
-    }
-    if (opts.note) {
-      task.note = opts.note;
-    }
-    if (opts.estimatedMinutes !== undefined) {
-      task.estimatedMinutes = opts.estimatedMinutes;
-    }
-    if (opts.tags && opts.tags.length > 0) {
-      for (var i = 0; i < opts.tags.length; i++) {
-        var tag = findTag(doc, opts.tags[i]);
-        if (tag) {
-          app.add(tag, { to: task.tags });
-        }
-      }
-    }
+    var tags = input.tags && input.tags.length > 0 ? resolveTags(input.tags) : [];
+
+    var task = project ? new Task(input.name, project) : new Task(input.name);
+
+    if (input.dueDate) task.dueDate = new Date(input.dueDate);
+    if (input.deferDate) task.deferDate = new Date(input.deferDate);
+    if (input.flagged !== undefined) task.flagged = input.flagged;
+    if (input.note !== undefined) task.note = input.note;
+    if (input.estimatedMinutes !== undefined) task.estimatedMinutes = input.estimatedMinutes;
+    if (tags.length > 0) task.addTags(tags);
 
     return JSON.stringify({ success: true, task: formatTaskBrief(task) });`);
 
 export function buildTaskAddArgs(name: string, options: TaskAddOptions): JxaRunnerOptions {
-  return {
-    args: [name, JSON.stringify(options)],
-  };
+  return buildJsonArgs({ name, ...options });
 }
 
 export { SCRIPT as TASK_ADD_SCRIPT };

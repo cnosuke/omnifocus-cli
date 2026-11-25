@@ -11,9 +11,11 @@ export default defineConfig({
   fmt: {
     singleQuote: true,
     trailingComma: 'all',
+    ignorePatterns: ['dist/**', 'skills/omnifocus-cli/bin/**'],
   },
 
   lint: {
+    ignorePatterns: ['dist/**', 'skills/omnifocus-cli/bin/**'],
     options: {
       typeAware: true,
     },

@@ -1,158 +1,132 @@
+import type { JxaRunnerOptions } from './types.js';
+
 export const DEFAULT_TASK_LIMIT = 50;
 
-export const JXA_HELPERS = `
-ObjC.import('Foundation');
-
-function getArgv() {
-  return ObjC.deepUnwrap($.NSProcessInfo.processInfo.arguments);
-}
-
-function getApp() { return Application("OmniFocus"); }
-function getDoc(app) { return app.defaultDocument; }
-
-function isOmniFocusRunning() {
-  var se = Application("System Events");
-  var procs = se.processes.whose({ name: "OmniFocus" });
-  return procs.length > 0;
+export const OMNI_HELPERS = `
+function isTaskActive(task) {
+  return !task.completed && task.taskStatus !== Task.Status.Dropped;
 }
 
 function formatTaskBrief(task) {
   return {
-    id: task.id(),
-    name: task.name(),
-    dueDate: task.dueDate() ? task.dueDate().toISOString() : null,
-    flagged: task.flagged(),
-    completed: task.completed()
+    id: task.id.primaryKey,
+    name: task.name,
+    dueDate: task.dueDate ? task.dueDate.toISOString() : null,
+    flagged: task.flagged,
+    completed: task.completed
   };
 }
 
 function formatTaskDetail(task) {
-  var brief = formatTaskBrief(task);
-  var proj = task.containingProject();
-  var taskTags = task.tags();
-  var tagNames = [];
-  for (var i = 0; i < taskTags.length; i++) {
-    tagNames.push(taskTags[i].name());
-  }
-  return Object.assign(brief, {
-    note: task.note() || "",
-    deferDate: task.deferDate() ? task.deferDate().toISOString() : null,
-    completionDate: task.completionDate() ? task.completionDate().toISOString() : null,
-    estimatedMinutes: task.estimatedMinutes(),
-    inInbox: task.inInbox(),
-    tags: tagNames,
-    projectName: proj ? proj.name() : null
+  var proj = task.containingProject;
+  return Object.assign(formatTaskBrief(task), {
+    note: task.note || "",
+    deferDate: task.deferDate ? task.deferDate.toISOString() : null,
+    completionDate: task.completionDate ? task.completionDate.toISOString() : null,
+    estimatedMinutes: task.estimatedMinutes,
+    inInbox: task.inInbox,
+    tags: task.tags.map(function(t) { return t.name; }),
+    projectName: proj ? proj.name : null
   });
 }
 
-function parseDate(dateStr) {
-  if (!dateStr) return null;
-  var now = new Date();
-  var lower = dateStr.toLowerCase().trim();
-
-  if (lower === "today") return new Date(now.getFullYear(), now.getMonth(), now.getDate(), 17, 0, 0);
-  if (lower === "tomorrow") { var d = new Date(now); d.setDate(d.getDate() + 1); d.setHours(17,0,0,0); return d; }
-  if (lower === "next week") { var d = new Date(now); d.setDate(d.getDate() + 7); d.setHours(17,0,0,0); return d; }
-
-  var daysMatch = lower.match(/^\\+(\\d+)d$/);
-  if (daysMatch) { var d = new Date(now); d.setDate(d.getDate() + parseInt(daysMatch[1])); d.setHours(17,0,0,0); return d; }
-
-  var weeksMatch = lower.match(/^\\+(\\d+)w$/);
-  if (weeksMatch) { var d = new Date(now); d.setDate(d.getDate() + parseInt(weeksMatch[1]) * 7); d.setHours(17,0,0,0); return d; }
-
-  var parsed = new Date(dateStr);
-  return isNaN(parsed.getTime()) ? null : parsed;
+function normalizeProjectStatus(status) {
+  if (status === Project.Status.Active) return "active";
+  if (status === Project.Status.OnHold) return "on-hold";
+  if (status === Project.Status.Done) return "done";
+  if (status === Project.Status.Dropped) return "dropped";
+  return String(status);
 }
 
-function findProject(doc, name) {
-  var projects = doc.flattenedProjects();
-  for (var i = 0; i < projects.length; i++) {
-    if (projects[i].name() === name) return projects[i];
+function resolveProjectStatus(status) {
+  switch (status) {
+    case "active": return Project.Status.Active;
+    case "on-hold": return Project.Status.OnHold;
+    case "done": return Project.Status.Done;
+    case "dropped": return Project.Status.Dropped;
+    default: throw new Error("Invalid status: " + status);
   }
-  return null;
 }
 
-function findTag(doc, name) {
-  var tags = doc.flattenedTags();
-  for (var i = 0; i < tags.length; i++) {
-    if (tags[i].name() === name) return tags[i];
+function resolveTags(tagNames) {
+  var allTags = flattenedTags;
+  var resolved = [];
+  for (var i = 0; i < tagNames.length; i++) {
+    var tag = allTags.byName(tagNames[i]);
+    if (!tag) {
+      throw new Error("Tag not found: " + tagNames[i]);
+    }
+    resolved.push(tag);
   }
-  return null;
-}
-
-function findTask(doc, taskId) {
-  var tasks = doc.flattenedTasks();
-  for (var i = 0; i < tasks.length; i++) {
-    if (tasks[i].id() === taskId) return tasks[i];
-  }
-  return null;
-}
-
-function findFolder(doc, name) {
-  var folders = doc.flattenedFolders();
-  for (var i = 0; i < folders.length; i++) {
-    if (folders[i].name() === name) return folders[i];
-  }
-  return null;
-}
-
-function normalizeProjectStatus(rawStatus) {
-  var map = {"active status":"active", "on hold status":"on-hold", "done status":"done", "dropped status":"dropped"};
-  return map[String(rawStatus)] || String(rawStatus);
+  return resolved;
 }
 
 function countRemainingTasks(project) {
-  var tasks = project.flattenedTasks();
+  var tasks = project.flattenedTasks;
   var count = 0;
   for (var i = 0; i < tasks.length; i++) {
-    if (!tasks[i].completed()) count++;
+    if (isTaskActive(tasks[i])) count++;
   }
   return count;
 }
 
 function formatProjectBrief(project) {
-  var folder = project.parentFolder();
+  var folder = project.parentFolder;
   return {
-    id: project.id(),
-    name: project.name(),
-    status: normalizeProjectStatus(project.status()),
-    dueDate: project.dueDate() ? project.dueDate().toISOString() : null,
-    deferDate: project.deferDate() ? project.deferDate().toISOString() : null,
-    flagged: project.flagged(),
+    id: project.id.primaryKey,
+    name: project.name,
+    status: normalizeProjectStatus(project.status),
+    dueDate: project.dueDate ? project.dueDate.toISOString() : null,
+    deferDate: project.deferDate ? project.deferDate.toISOString() : null,
+    flagged: project.flagged,
     taskCount: countRemainingTasks(project),
-    folderName: folder ? folder.name() : null
+    folderName: folder ? folder.name : null
   };
 }
 
 function formatProjectDetail(project) {
-  var brief = formatProjectBrief(project);
-  var projectTags = project.tags();
-  var tagNames = [];
-  for (var i = 0; i < projectTags.length; i++) {
-    tagNames.push(projectTags[i].name());
-  }
-  return Object.assign(brief, {
-    note: project.note() || "",
-    completionDate: project.completionDate() ? project.completionDate().toISOString() : null,
-    estimatedMinutes: project.estimatedMinutes(),
-    sequential: project.sequential(),
-    tags: tagNames
+  return Object.assign(formatProjectBrief(project), {
+    note: project.note || "",
+    completionDate: project.completionDate ? project.completionDate.toISOString() : null,
+    estimatedMinutes: project.estimatedMinutes,
+    sequential: project.sequential,
+    tags: project.tags.map(function(t) { return t.name; })
   });
 }
 `;
 
-export function wrapJxaScript(body: string): string {
-  return `${JXA_HELPERS}
-(function() {
+export function wrapOmniScript(omniBody: string): string {
+  const fullOmniCode = `${OMNI_HELPERS}
+(function(input) {
   try {
-    if (!isOmniFocusRunning()) {
+${omniBody}
+  } catch (e) {
+    return JSON.stringify({ success: false, error: e.message || String(e) });
+  }
+})`;
+
+  return `function run(argv) {
+  try {
+    var app = Application("OmniFocus");
+    if (!app.running()) {
       return JSON.stringify({ success: false, error: "OmniFocus is not running" });
     }
-    var app = getApp();
-    var doc = getDoc(app);
-${body}
+    var inputJson = argv.length > 0 ? String(argv[0]) : "{}";
+    var escapedInput = JSON.stringify(inputJson)
+      .replace(/\\u2028/g, "\\\\u2028")
+      .replace(/\\u2029/g, "\\\\u2029");
+    var omniSource = ${JSON.stringify(fullOmniCode)} + "(JSON.parse(" + escapedInput + "));";
+    var result = app.evaluateJavascript(omniSource);
+    if (typeof result !== "string") {
+      return JSON.stringify({ success: false, error: "Unexpected response from OmniFocus" });
+    }
+    return result;
   } catch (e) {
-    return JSON.stringify({ success: false, error: e.message });
+    return JSON.stringify({ success: false, error: e.message || String(e) });
   }
-})();`;
+}`;
+}
+
+export function buildJsonArgs(payload: object): JxaRunnerOptions {
+  return { args: [JSON.stringify(payload)] };
 }

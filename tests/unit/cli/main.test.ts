@@ -24,14 +24,7 @@ describe('main', () => {
     expect(spy).toHaveBeenCalledWith(expect.stringContaining('of - OmniFocus CLI'));
   });
 
-  it('exits with error for unknown command', async () => {
-    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => {
-      throw new Error('process.exit');
-    });
-
-    await expect(main(['unknown'])).rejects.toThrow('process.exit');
-    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining("Unknown command 'unknown'"));
-    exitSpy.mockRestore();
+  it('throws error for unknown command', async () => {
+    await expect(main(['unknown'])).rejects.toThrow("Unknown command 'unknown'");
   });
 });

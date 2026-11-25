@@ -1,30 +1,51 @@
-export function requireFlagValue(flag: string, args: string[], index: number): string {
-  const value = args[index];
-  if (value === undefined) {
-    throw new Error(`${flag} requires a value`);
-  }
-  return value;
-}
+import { parseArgs, type ParseArgsOptionsConfig } from 'node:util';
 
-export function requireInteger(flag: string, value: string): number {
+export function parsePositiveInteger(flag: string, value: string): number {
   const n = Number(value);
-  if (!Number.isInteger(n) || n < 0) {
+  if (!Number.isInteger(n) || n <= 0) {
     throw new Error(`${flag} must be a positive integer, got '${value}'`);
   }
   return n;
 }
 
-export function requirePositionalArg(
+export interface ParsedCommandArgs<T extends ParseArgsOptionsConfig> {
+  values: ReturnType<typeof parseArgs<{ options: T; allowPositionals: true }>>['values'];
+  positionals: string[];
+}
+
+export function parseCommandArgs<T extends ParseArgsOptionsConfig>(
   args: string[],
-  current: string,
-  existing: string,
+  options: T,
   helpCommand: string,
-): string {
-  if (current.startsWith('-')) {
-    throw new Error(`Unknown flag '${current}'. Run '${helpCommand}' for usage.`);
+): ParsedCommandArgs<T> {
+  const mergedOptions = {
+    help: { type: 'boolean' as const, short: 'h' },
+    ...options,
+  };
+
+  try {
+    const parsed = parseArgs({
+      args,
+      options: mergedOptions,
+      allowPositionals: true,
+      strict: true,
+    });
+    return {
+      values: parsed.values as ParsedCommandArgs<T>['values'],
+      positionals: parsed.positionals,
+    };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new Error(`${message}. Run '${helpCommand}' for usage.`);
   }
-  if (existing) {
-    throw new Error(`Unexpected argument '${current}'. Run '${helpCommand}' for usage.`);
+}
+
+export function expectPositionalCount(
+  positionals: string[],
+  max: number,
+  helpCommand: string,
+): void {
+  if (positionals.length > max) {
+    throw new Error(`Unexpected argument '${positionals[max]}'. Run '${helpCommand}' for usage.`);
   }
-  return current;
 }

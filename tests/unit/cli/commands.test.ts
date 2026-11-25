@@ -45,7 +45,7 @@ describe('inbox commands', () => {
     await runInbox(['list']);
     expect(mockRunJxa).toHaveBeenCalledOnce();
     const script = mockRunJxa.mock.calls[0][0];
-    expect(script).toContain('result.push(formatTaskBrief(allTasks[i]));');
+    expect(script).toContain('formatTaskBrief(task)');
   });
 
   it('inbox list --detailed calls runJxa with detailed mode', async () => {
@@ -55,11 +55,11 @@ describe('inbox commands', () => {
     await runInbox(['list', '--detailed']);
     expect(mockRunJxa).toHaveBeenCalledOnce();
     const script = mockRunJxa.mock.calls[0][0];
-    expect(script).toContain('result.push(formatTaskDetail(allTasks[i]));');
+    expect(script).toContain('formatTaskDetail(task)');
   });
 
   it('inbox list throws on unknown flag', async () => {
-    await expect(runInbox(['list', '--bad'])).rejects.toThrow("Unknown flag '--bad'");
+    await expect(runInbox(['list', '--bad'])).rejects.toThrow('--bad');
   });
 
   it('inbox throws on unknown subcommand', () => {
@@ -72,20 +72,22 @@ describe('task commands', () => {
     await expect(runTask(['add'])).rejects.toThrow('Task name is required');
   });
 
-  it('task add passes name and options via osascript args', async () => {
+  it('task add passes single JSON payload with normalized ISO dates', async () => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
     mockJxaResult({
       success: true,
       task: { id: '1', name: 'Test', dueDate: null, flagged: false, completed: false },
     });
 
-    await runTask(['add', 'Test Task', '--project', 'Work', '--flagged']);
+    await runTask(['add', 'Test Task', '--project', 'Work', '--due', '2026-03-15', '--flagged']);
     expect(mockRunJxa).toHaveBeenCalledOnce();
     const [_script, options] = mockRunJxa.mock.calls[0];
-    expect(options!.args![0]).toBe('Test Task');
-    const opts = JSON.parse(options!.args![1]);
-    expect(opts.project).toBe('Work');
-    expect(opts.flagged).toBe(true);
+    expect(options!.args).toHaveLength(1);
+    const payload = JSON.parse(options!.args![0]);
+    expect(payload.name).toBe('Test Task');
+    expect(payload.project).toBe('Work');
+    expect(payload.flagged).toBe(true);
+    expect(payload.dueDate).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
   });
 
   it('task add with tags', async () => {
@@ -97,27 +99,35 @@ describe('task commands', () => {
 
     await runTask(['add', 'Test', '--tag', 'work', '--tag', 'urgent']);
     const [_script, options] = mockRunJxa.mock.calls[0];
-    const opts = JSON.parse(options!.args![1]);
-    expect(opts.tags).toEqual(['work', 'urgent']);
+    const payload = JSON.parse(options!.args![0]);
+    expect(payload.tags).toEqual(['work', 'urgent']);
   });
 
-  it('task add rejects non-integer estimate', async () => {
+  it('task add rejects invalid date before calling osascript', async () => {
+    await expect(runTask(['add', 'Test', '--due', 'not-a-date'])).rejects.toThrow(
+      "Invalid date 'not-a-date'",
+    );
+    expect(mockRunJxa).not.toHaveBeenCalled();
+  });
+
+  it('task add rejects non-integer or zero estimate', async () => {
     await expect(runTask(['add', 'Test', '--estimate', 'abc'])).rejects.toThrow(
+      'must be a positive integer',
+    );
+    await expect(runTask(['add', 'Test', '--estimate', '0'])).rejects.toThrow(
       'must be a positive integer',
     );
   });
 
   it('task add throws on missing flag value', async () => {
-    await expect(runTask(['add', 'Test', '--project'])).rejects.toThrow(
-      '--project requires a value',
-    );
+    await expect(runTask(['add', 'Test', '--project'])).rejects.toThrow('--project');
   });
 
   it('task complete requires id', async () => {
     await expect(runTask(['complete'])).rejects.toThrow('Task ID is required');
   });
 
-  it('task complete passes id via osascript args', async () => {
+  it('task complete passes taskId in JSON payload', async () => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
     mockJxaResult({
       success: true,
@@ -126,24 +136,31 @@ describe('task commands', () => {
 
     await runTask(['complete', 'abc123']);
     const [_script, options] = mockRunJxa.mock.calls[0];
-    expect(options!.args).toEqual(['abc123']);
+    expect(JSON.parse(options!.args![0])).toEqual({ taskId: 'abc123' });
   });
 
   it('task search requires keyword', async () => {
     await expect(runTask(['search'])).rejects.toThrow('Search keyword is required');
   });
 
-  it('task search passes keyword and options via osascript args', async () => {
+  it('task search rejects zero limit', async () => {
+    await expect(runTask(['search', 'report', '--limit', '0'])).rejects.toThrow(
+      'must be a positive integer',
+    );
+  });
+
+  it('task search passes keyword and options in JSON payload', async () => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
     mockJxaResult({ success: true, tasks: [], totalCount: 0 });
 
     await runTask(['search', 'report', '--project', 'Work', '--flagged', '--limit', '10']);
     const [_script, options] = mockRunJxa.mock.calls[0];
-    expect(options!.args![0]).toBe('report');
-    const opts = JSON.parse(options!.args![1]);
-    expect(opts.project).toBe('Work');
-    expect(opts.flagged).toBe(true);
-    expect(opts.limit).toBe(10);
+    expect(JSON.parse(options!.args![0])).toEqual({
+      keyword: 'report',
+      project: 'Work',
+      flagged: true,
+      limit: 10,
+    });
   });
 
   it('task --help prints subcommands', async () => {
@@ -158,31 +175,29 @@ describe('task commands', () => {
 });
 
 describe('tasks commands', () => {
-  it('tasks flagged calls correct script builder', async () => {
+  it('tasks flagged calls runJxa', async () => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
     mockJxaResult({ success: true, tasks: [], totalCount: 0 });
 
     await runTasks(['flagged']);
-    const script = mockRunJxa.mock.calls[0][0];
-    expect(script).toContain('t.flagged()');
+    expect(mockRunJxa).toHaveBeenCalledOnce();
+    expect(mockRunJxa.mock.calls[0][0]).toContain('t.flagged');
   });
 
-  it('tasks overdue calls correct script builder', async () => {
+  it('tasks overdue calls runJxa', async () => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
     mockJxaResult({ success: true, tasks: [], totalCount: 0 });
 
     await runTasks(['overdue']);
-    const script = mockRunJxa.mock.calls[0][0];
-    expect(script).toContain('startOfToday');
+    expect(mockRunJxa.mock.calls[0][0]).toContain('startOfToday');
   });
 
-  it('tasks today calls correct script builder', async () => {
+  it('tasks today calls runJxa', async () => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
     mockJxaResult({ success: true, tasks: [], totalCount: 0 });
 
     await runTasks(['today']);
-    const script = mockRunJxa.mock.calls[0][0];
-    expect(script).toContain('endOfToday');
+    expect(mockRunJxa.mock.calls[0][0]).toContain('endOfToday');
   });
 
   it('tasks --help prints subcommands', async () => {
@@ -208,8 +223,7 @@ describe('perspectives commands', () => {
 
     await runPerspectives(['list']);
     expect(mockRunJxa).toHaveBeenCalledOnce();
-    const script = mockRunJxa.mock.calls[0][0];
-    expect(script).toContain('perspectiveNames');
+    expect(mockRunJxa.mock.calls[0][0]).toContain('Perspective.all');
   });
 
   it('perspectives list prints help with --help', async () => {
@@ -225,9 +239,7 @@ describe('perspectives commands', () => {
   });
 
   it('perspectives list throws on unknown argument', async () => {
-    await expect(runPerspectives(['list', '--badarg'])).rejects.toThrow(
-      "Unknown argument '--badarg'",
-    );
+    await expect(runPerspectives(['list', '--badarg'])).rejects.toThrow('--badarg');
   });
 
   it('perspectives throws on unknown subcommand', () => {
@@ -243,8 +255,7 @@ describe('projects commands', () => {
     await runProjects(['list']);
     expect(mockRunJxa).toHaveBeenCalledOnce();
     const [_script, options] = mockRunJxa.mock.calls[0];
-    const opts = JSON.parse(options!.args![0]);
-    expect(opts).toEqual({});
+    expect(JSON.parse(options!.args![0])).toEqual({});
   });
 
   it('projects list with --status and --folder', async () => {
@@ -253,9 +264,13 @@ describe('projects commands', () => {
 
     await runProjects(['list', '--status', 'active', '--folder', 'Work']);
     const [_script, options] = mockRunJxa.mock.calls[0];
-    const opts = JSON.parse(options!.args![0]);
-    expect(opts.status).toBe('active status');
-    expect(opts.folder).toBe('Work');
+    expect(JSON.parse(options!.args![0])).toEqual({ status: 'active', folder: 'Work' });
+  });
+
+  it('projects list validates status value', async () => {
+    await expect(runProjects(['list', '--status', 'invalid'])).rejects.toThrow(
+      "Invalid status 'invalid'",
+    );
   });
 
   it('projects show requires name', async () => {
@@ -268,27 +283,35 @@ describe('projects commands', () => {
 
     await runProjects(['show', 'My Project', '--detailed', '--tasks']);
     const [_script, options] = mockRunJxa.mock.calls[0];
-    const opts = JSON.parse(options!.args![0]);
-    expect(opts.name).toBe('My Project');
-    expect(opts.detailed).toBe(true);
-    expect(opts.includeTasks).toBe(true);
+    expect(JSON.parse(options!.args![0])).toEqual({
+      name: 'My Project',
+      detailed: true,
+      includeTasks: true,
+    });
   });
 
   it('projects add requires name', async () => {
     await expect(runProjects(['add'])).rejects.toThrow('Project name is required');
   });
 
-  it('projects add passes name and options', async () => {
+  it('projects add passes name and normalized options', async () => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
     mockJxaResult({ success: true, project: { id: '1', name: 'New' } });
 
     await runProjects(['add', 'New Project', '--due', 'tomorrow', '--flagged', '--folder', 'Work']);
     const [_script, options] = mockRunJxa.mock.calls[0];
-    expect(options!.args![0]).toBe('New Project');
-    const opts = JSON.parse(options!.args![1]);
-    expect(opts.dueDate).toBe('tomorrow');
-    expect(opts.flagged).toBe(true);
-    expect(opts.folder).toBe('Work');
+    const payload = JSON.parse(options!.args![0]);
+    expect(payload.name).toBe('New Project');
+    expect(payload.flagged).toBe(true);
+    expect(payload.folder).toBe('Work');
+    expect(payload.dueDate).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+  });
+
+  it('projects add rejects invalid date before calling osascript', async () => {
+    await expect(runProjects(['add', 'New Project', '--defer', 'bad-date'])).rejects.toThrow(
+      "Invalid date 'bad-date'",
+    );
+    expect(mockRunJxa).not.toHaveBeenCalled();
   });
 
   it('projects add with tags and sequential', async () => {
@@ -297,9 +320,11 @@ describe('projects commands', () => {
 
     await runProjects(['add', 'Test', '--tag', 'work', '--tag', 'urgent', '--sequential']);
     const [_script, options] = mockRunJxa.mock.calls[0];
-    const opts = JSON.parse(options!.args![1]);
-    expect(opts.tags).toEqual(['work', 'urgent']);
-    expect(opts.sequential).toBe(true);
+    expect(JSON.parse(options!.args![0])).toEqual({
+      name: 'Test',
+      tags: ['work', 'urgent'],
+      sequential: true,
+    });
   });
 
   it('projects status requires name and status', async () => {
@@ -313,14 +338,13 @@ describe('projects commands', () => {
     );
   });
 
-  it('projects status passes name and mapped status', async () => {
+  it('projects status passes name and status in JSON payload', async () => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
     mockJxaResult({ success: true, project: { id: '1', name: 'Test' } });
 
     await runProjects(['status', 'My Project', 'on-hold']);
     const [_script, options] = mockRunJxa.mock.calls[0];
-    expect(options!.args![0]).toBe('My Project');
-    expect(options!.args![1]).toBe('on hold status');
+    expect(JSON.parse(options!.args![0])).toEqual({ name: 'My Project', status: 'on-hold' });
   });
 
   it('projects --help prints subcommands', async () => {

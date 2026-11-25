@@ -1,111 +1,116 @@
 import { runAndPrint } from '../run-and-print.js';
-import { requireFlagValue, requireInteger, requirePositionalArg } from '../arg-utils.js';
+import { expectPositionalCount, parseCommandArgs, parsePositiveInteger } from '../arg-utils.js';
+import { parseDateToIso } from '../date.js';
 import { TASK_ADD_SCRIPT, buildTaskAddArgs } from '../../jxa/scripts/task-add.js';
 import { TASK_COMPLETE_SCRIPT, buildTaskCompleteArgs } from '../../jxa/scripts/task-complete.js';
 import { TASK_SEARCH_SCRIPT, buildTaskSearchArgs } from '../../jxa/scripts/task-search.js';
-import type { TaskAddOptions, TaskSearchOptions } from '../../types/index.js';
+import type {
+  SingleTaskResponse,
+  TaskAddOptions,
+  TaskBrief,
+  TaskCompleteResult,
+  TaskSearchOptions,
+  TasksListResponse,
+} from '../../types/index.js';
 
 export async function taskAdd(args: string[]): Promise<void> {
-  let name = '';
-  const options: TaskAddOptions = {};
-  const tags: string[] = [];
+  const { values, positionals } = parseCommandArgs(
+    args,
+    {
+      project: { type: 'string' },
+      due: { type: 'string' },
+      defer: { type: 'string' },
+      flagged: { type: 'boolean' },
+      note: { type: 'string' },
+      estimate: { type: 'string' },
+      tag: { type: 'string', multiple: true },
+    },
+    'of task add --help',
+  );
 
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
-    switch (arg) {
-      case '--project':
-        options.project = requireFlagValue('--project', args, ++i);
-        break;
-      case '--due':
-        options.dueDate = requireFlagValue('--due', args, ++i);
-        break;
-      case '--defer':
-        options.deferDate = requireFlagValue('--defer', args, ++i);
-        break;
-      case '--flagged':
-        options.flagged = true;
-        break;
-      case '--note':
-        options.note = requireFlagValue('--note', args, ++i);
-        break;
-      case '--estimate':
-        options.estimatedMinutes = requireInteger(
-          '--estimate',
-          requireFlagValue('--estimate', args, ++i),
-        );
-        break;
-      case '--tag':
-        tags.push(requireFlagValue('--tag', args, ++i));
-        break;
-      case '--help':
-      case '-h':
-        printTaskAddHelp();
-        return;
-      default:
-        name = requirePositionalArg(args, arg, name, 'of task add --help');
-    }
+  if (values.help) {
+    printTaskAddHelp();
+    return;
   }
 
+  expectPositionalCount(positionals, 1, 'of task add --help');
+  const name = positionals[0];
   if (!name) {
     throw new Error("Task name is required. Run 'of task add --help' for usage.");
   }
 
-  if (tags.length > 0) {
-    options.tags = tags;
+  const options: TaskAddOptions = {};
+  if (values.project !== undefined) options.project = values.project;
+  if (values.due !== undefined) options.dueDate = parseDateToIso(values.due);
+  if (values.defer !== undefined) options.deferDate = parseDateToIso(values.defer);
+  if (values.flagged) options.flagged = true;
+  if (values.note !== undefined) options.note = values.note;
+  if (values.estimate !== undefined) {
+    options.estimatedMinutes = parsePositiveInteger('--estimate', values.estimate);
+  }
+  if (values.tag && values.tag.length > 0) {
+    options.tags = values.tag;
   }
 
-  await runAndPrint(TASK_ADD_SCRIPT, buildTaskAddArgs(name, options));
+  await runAndPrint<SingleTaskResponse<TaskBrief>>(
+    TASK_ADD_SCRIPT,
+    buildTaskAddArgs(name, options),
+  );
 }
 
 export async function taskComplete(args: string[]): Promise<void> {
-  let taskId = '';
+  const { values, positionals } = parseCommandArgs(args, {}, 'of task complete --help');
 
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
-    if (arg === '--help' || arg === '-h') {
-      printTaskCompleteHelp();
-      return;
-    }
-    taskId = requirePositionalArg(args, arg, taskId, 'of task complete --help');
+  if (values.help) {
+    printTaskCompleteHelp();
+    return;
   }
 
+  expectPositionalCount(positionals, 1, 'of task complete --help');
+  const taskId = positionals[0];
   if (!taskId) {
     throw new Error("Task ID is required. Run 'of task complete --help' for usage.");
   }
 
-  await runAndPrint(TASK_COMPLETE_SCRIPT, buildTaskCompleteArgs(taskId));
+  await runAndPrint<SingleTaskResponse<TaskCompleteResult>>(
+    TASK_COMPLETE_SCRIPT,
+    buildTaskCompleteArgs(taskId),
+  );
 }
 
 export async function taskSearch(args: string[]): Promise<void> {
-  let keyword = '';
-  const options: TaskSearchOptions = {};
+  const { values, positionals } = parseCommandArgs(
+    args,
+    {
+      project: { type: 'string' },
+      flagged: { type: 'boolean' },
+      limit: { type: 'string' },
+    },
+    'of task search --help',
+  );
 
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
-    switch (arg) {
-      case '--project':
-        options.project = requireFlagValue('--project', args, ++i);
-        break;
-      case '--flagged':
-        options.flagged = true;
-        break;
-      case '--limit':
-        options.limit = requireInteger('--limit', requireFlagValue('--limit', args, ++i));
-        break;
-      case '--help':
-      case '-h':
-        printTaskSearchHelp();
-        return;
-      default:
-        keyword = requirePositionalArg(args, arg, keyword, 'of task search --help');
-    }
+  if (values.help) {
+    printTaskSearchHelp();
+    return;
   }
 
+  expectPositionalCount(positionals, 1, 'of task search --help');
+  const keyword = positionals[0];
   if (!keyword) {
     throw new Error("Search keyword is required. Run 'of task search --help' for usage.");
   }
 
-  await runAndPrint(TASK_SEARCH_SCRIPT, buildTaskSearchArgs(keyword, options));
+  const options: TaskSearchOptions = {};
+  if (values.project !== undefined) options.project = values.project;
+  if (values.flagged) options.flagged = true;
+  if (values.limit !== undefined) {
+    options.limit = parsePositiveInteger('--limit', values.limit);
+  }
+
+  await runAndPrint<TasksListResponse<TaskBrief>>(
+    TASK_SEARCH_SCRIPT,
+    buildTaskSearchArgs(keyword, options),
+  );
 }
 
 export function runTask(args: string[]): Promise<void> {

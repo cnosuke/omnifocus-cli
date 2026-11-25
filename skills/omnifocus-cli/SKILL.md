@@ -9,14 +9,14 @@ Manage OmniFocus tasks using the `of` CLI bundled in this plugin.
 
 ## Setup
 
-The CLI is at `${CLAUDE_PLUGIN_ROOT}/skills/omnifocus-cli/bin/of`. All commands are self-contained (JXA scripts included in the single bundle).
+The CLI is at `${CLAUDE_PLUGIN_ROOT}/skills/omnifocus-cli/bin/of`. All commands are self-contained (Omni Automation scripts and the JXA bridge are included in the single bundle).
 
-**Requirements:** macOS, OmniFocus 4 Pro, Node.js >= 20, optional `jq` for pretty-printed JSON.
+**Requirements:** macOS, OmniFocus 4 Pro, Node.js >= 20.
 
 ## How to Use
 
 **CRITICAL: All commands MUST be run with `dangerouslyDisableSandbox: true` in the Bash tool.**
-This CLI uses `osascript` (JXA) to communicate with OmniFocus, which requires macOS automation permissions that are blocked by the sandbox. Without disabling the sandbox, commands will fail with a misleading error ("アプリケーションは実行されていません") even when OmniFocus is running.
+This CLI communicates with OmniFocus via `osascript` (JXA bridge calling Omni Automation `evaluateJavascript`), which requires macOS automation permissions that are blocked by the sandbox. Without disabling the sandbox, commands will fail with a misleading error ("アプリケーションは実行されていません") even when OmniFocus is running. On first run, OmniFocus may also prompt to allow external script execution.
 
 Run commands via Bash tool:
 
@@ -43,13 +43,14 @@ of task add "Deploy" --tag urgent --tag ops
 ```
 
 **Options:**
+
 - `--project <name>` -- Assign to project
 - `--due <date>` -- Due date
 - `--defer <date>` -- Defer date
 - `--flagged` -- Mark as flagged
 - `--note <text>` -- Add a note
-- `--estimate <minutes>` -- Estimated duration
-- `--tag <name>` -- Add tag (repeatable)
+- `--estimate <minutes>` -- Estimated duration (positive integer)
+- `--tag <name>` -- Add an existing tag (repeatable; fails if the tag does not exist)
 
 ### Complete Task
 
@@ -67,7 +68,7 @@ of task search "review" --project Work --flagged --limit 10
 ### Task Lists
 
 ```bash
-of tasks today      # Due today
+of tasks today      # Due today (including overdue)
 of tasks overdue    # Overdue
 of tasks flagged    # Flagged
 ```
@@ -105,25 +106,24 @@ of projects status "Paused Project" on-hold
 
 ## Date Formats
 
-| Format | Example | Description |
-|--------|---------|-------------|
-| `today` | `--due today` | Today at 17:00 |
-| `tomorrow` | `--due tomorrow` | Tomorrow at 17:00 |
-| `next week` | `--due "next week"` | 7 days from now |
-| `+Nd` | `--due +3d` | N days from now |
-| `+Nw` | `--due +2w` | N weeks from now |
-| ISO 8601 | `--due 2026-03-15` | Specific date |
+| Format      | Example             | Description       |
+| ----------- | ------------------- | ----------------- |
+| `today`     | `--due today`       | Today at 17:00    |
+| `tomorrow`  | `--due tomorrow`    | Tomorrow at 17:00 |
+| `next week` | `--due "next week"` | 7 days from now   |
+| `+Nd`       | `--due +3d`         | N days from now   |
+| `+Nw`       | `--due +2w`         | N weeks from now  |
+| ISO 8601    | `--due 2026-03-15`  | Specific date     |
 
 ## Output
 
-All commands return JSON. Parse with `jq` if needed.
+All commands output pretty-printed JSON to stdout on success. On failure, `Error: ...` is written to stderr with exit code `1`.
 
 ```json
 {"success": true, "tasks": [...], "totalCount": 5}
 {"success": true, "task": {"id": "abc123", "name": "Buy milk"}}
 {"success": true, "projects": [...], "totalCount": 3}
-{"success": true, "perspectives": ["Inbox", "Forecast", ...]}
-{"success": false, "error": "OmniFocus is not running"}
+{"success": true, "perspectiveNames": ["Inbox", "Forecast", ...], "totalCount": 2}
 ```
 
 ## Guidelines
@@ -131,5 +131,5 @@ All commands return JSON. Parse with `jq` if needed.
 - When user says "OF" they mean OmniFocus
 - Always use the full path `${CLAUDE_PLUGIN_ROOT}/skills/omnifocus-cli/bin/of` to invoke the CLI
 - Parse JSON output to present results in a readable format
-- When adding tasks, infer appropriate flags from context (e.g. work-related -> `--project Work`)
+- When adding tasks, infer appropriate flags from context (e.g. work-related -> `--project Work`), but only pass `--tag` when the tag is known to exist in OmniFocus (unknown tags fail instead of being ignored)
 - Convert relative date references from user to the CLI date format (e.g. "in 3 days" -> `--due +3d`)

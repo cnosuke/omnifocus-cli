@@ -1,5 +1,6 @@
 import { runAndPrint } from '../run-and-print.js';
-import { requireFlagValue, requirePositionalArg } from '../arg-utils.js';
+import { expectPositionalCount, parseCommandArgs } from '../arg-utils.js';
+import { parseDateToIso } from '../date.js';
 import { PROJECTS_LIST_SCRIPT, buildProjectsListArgs } from '../../jxa/scripts/projects-list.js';
 import { PROJECTS_SHOW_SCRIPT, buildProjectsShowArgs } from '../../jxa/scripts/projects-show.js';
 import { PROJECTS_ADD_SCRIPT, buildProjectsAddArgs } from '../../jxa/scripts/projects-add.js';
@@ -7,147 +8,133 @@ import {
   PROJECTS_STATUS_SCRIPT,
   buildProjectsStatusArgs,
 } from '../../jxa/scripts/projects-status.js';
-import { VALID_PROJECT_STATUSES, type ProjectAddOptions } from '../../types/index.js';
+import {
+  parseProjectStatus,
+  type ProjectAddOptions,
+  type ProjectBrief,
+  type ProjectDetail,
+  type ProjectsListResponse,
+  type SingleProjectResponse,
+} from '../../types/index.js';
 
 export async function projectsList(args: string[]): Promise<void> {
-  let status: string | undefined;
-  let folder: string | undefined;
+  const { values, positionals } = parseCommandArgs(
+    args,
+    {
+      status: { type: 'string' },
+      folder: { type: 'string' },
+    },
+    'of projects list --help',
+  );
 
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
-    switch (arg) {
-      case '--status':
-        status = requireFlagValue('--status', args, ++i);
-        break;
-      case '--folder':
-        folder = requireFlagValue('--folder', args, ++i);
-        break;
-      case '--help':
-      case '-h':
-        printProjectsListHelp();
-        return;
-      default:
-        throw new Error(`Unknown argument '${arg}'. Run 'of projects list --help' for usage.`);
-    }
+  if (values.help) {
+    printProjectsListHelp();
+    return;
   }
 
-  await runAndPrint(PROJECTS_LIST_SCRIPT, buildProjectsListArgs({ status, folder }));
+  expectPositionalCount(positionals, 0, 'of projects list --help');
+
+  const status = values.status !== undefined ? parseProjectStatus(values.status) : undefined;
+  await runAndPrint<ProjectsListResponse>(
+    PROJECTS_LIST_SCRIPT,
+    buildProjectsListArgs({ status, folder: values.folder }),
+  );
 }
 
 export async function projectsShow(args: string[]): Promise<void> {
-  let name = '';
-  let detailed = false;
-  let includeTasks = false;
+  const { values, positionals } = parseCommandArgs(
+    args,
+    {
+      detailed: { type: 'boolean' },
+      tasks: { type: 'boolean' },
+    },
+    'of projects show --help',
+  );
 
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
-    switch (arg) {
-      case '--detailed':
-        detailed = true;
-        break;
-      case '--tasks':
-        includeTasks = true;
-        break;
-      case '--help':
-      case '-h':
-        printProjectsShowHelp();
-        return;
-      default:
-        name = requirePositionalArg(args, arg, name, 'of projects show --help');
-    }
+  if (values.help) {
+    printProjectsShowHelp();
+    return;
   }
 
+  expectPositionalCount(positionals, 1, 'of projects show --help');
+  const name = positionals[0];
   if (!name) {
     throw new Error("Project name is required. Run 'of projects show --help' for usage.");
   }
 
-  await runAndPrint(PROJECTS_SHOW_SCRIPT, buildProjectsShowArgs({ name, detailed, includeTasks }));
+  await runAndPrint<SingleProjectResponse<ProjectBrief | ProjectDetail>>(
+    PROJECTS_SHOW_SCRIPT,
+    buildProjectsShowArgs({
+      name,
+      detailed: Boolean(values.detailed),
+      includeTasks: Boolean(values.tasks),
+    }),
+  );
 }
 
 export async function projectsAdd(args: string[]): Promise<void> {
-  let name = '';
-  const options: ProjectAddOptions = {};
-  const tags: string[] = [];
+  const { values, positionals } = parseCommandArgs(
+    args,
+    {
+      due: { type: 'string' },
+      defer: { type: 'string' },
+      flagged: { type: 'boolean' },
+      note: { type: 'string' },
+      sequential: { type: 'boolean' },
+      tag: { type: 'string', multiple: true },
+      folder: { type: 'string' },
+    },
+    'of projects add --help',
+  );
 
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
-    switch (arg) {
-      case '--due':
-        options.dueDate = requireFlagValue('--due', args, ++i);
-        break;
-      case '--defer':
-        options.deferDate = requireFlagValue('--defer', args, ++i);
-        break;
-      case '--flagged':
-        options.flagged = true;
-        break;
-      case '--note':
-        options.note = requireFlagValue('--note', args, ++i);
-        break;
-      case '--sequential':
-        options.sequential = true;
-        break;
-      case '--tag':
-        tags.push(requireFlagValue('--tag', args, ++i));
-        break;
-      case '--folder':
-        options.folder = requireFlagValue('--folder', args, ++i);
-        break;
-      case '--help':
-      case '-h':
-        printProjectsAddHelp();
-        return;
-      default:
-        name = requirePositionalArg(args, arg, name, 'of projects add --help');
-    }
+  if (values.help) {
+    printProjectsAddHelp();
+    return;
   }
 
+  expectPositionalCount(positionals, 1, 'of projects add --help');
+  const name = positionals[0];
   if (!name) {
     throw new Error("Project name is required. Run 'of projects add --help' for usage.");
   }
 
-  if (tags.length > 0) {
-    options.tags = tags;
-  }
+  const options: ProjectAddOptions = {};
+  if (values.due !== undefined) options.dueDate = parseDateToIso(values.due);
+  if (values.defer !== undefined) options.deferDate = parseDateToIso(values.defer);
+  if (values.flagged) options.flagged = true;
+  if (values.note !== undefined) options.note = values.note;
+  if (values.sequential) options.sequential = true;
+  if (values.tag && values.tag.length > 0) options.tags = values.tag;
+  if (values.folder !== undefined) options.folder = values.folder;
 
-  await runAndPrint(PROJECTS_ADD_SCRIPT, buildProjectsAddArgs(name, options));
+  await runAndPrint<SingleProjectResponse<ProjectBrief>>(
+    PROJECTS_ADD_SCRIPT,
+    buildProjectsAddArgs(name, options),
+  );
 }
 
 export async function projectsStatus(args: string[]): Promise<void> {
-  let name = '';
-  let status = '';
+  const { values, positionals } = parseCommandArgs(args, {}, 'of projects status --help');
 
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
-    if (arg === '--help' || arg === '-h') {
-      printProjectsStatusHelp();
-      return;
-    }
-    if (arg.startsWith('-')) {
-      throw new Error(`Unknown flag '${arg}'. Run 'of projects status --help' for usage.`);
-    }
-    if (!name) {
-      name = arg;
-    } else if (!status) {
-      status = arg;
-    } else {
-      throw new Error(`Unexpected argument '${arg}'. Run 'of projects status --help' for usage.`);
-    }
+  if (values.help) {
+    printProjectsStatusHelp();
+    return;
   }
 
+  expectPositionalCount(positionals, 2, 'of projects status --help');
+  const [name, rawStatus] = positionals;
   if (!name) {
     throw new Error("Project name is required. Run 'of projects status --help' for usage.");
   }
-  if (!status) {
+  if (!rawStatus) {
     throw new Error("Status is required. Run 'of projects status --help' for usage.");
   }
-  if (!VALID_PROJECT_STATUSES.includes(status)) {
-    throw new Error(
-      `Invalid status '${status}'. Must be one of: ${VALID_PROJECT_STATUSES.join(', ')}`,
-    );
-  }
 
-  await runAndPrint(PROJECTS_STATUS_SCRIPT, buildProjectsStatusArgs(name, status));
+  const status = parseProjectStatus(rawStatus);
+  await runAndPrint<SingleProjectResponse<ProjectBrief>>(
+    PROJECTS_STATUS_SCRIPT,
+    buildProjectsStatusArgs(name, status),
+  );
 }
 
 export function runProjects(args: string[]): Promise<void> {

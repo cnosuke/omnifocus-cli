@@ -1,7 +1,9 @@
-import type { JxaResponse } from '../types/index.js';
+import type { JxaResponse, JxaSuccessResponse } from '../types/index.js';
 import type { JxaResult } from './types.js';
 
-export function parseJxaOutput(result: JxaResult): JxaResponse {
+export function parseJxaOutput<T extends JxaSuccessResponse = JxaSuccessResponse>(
+  result: JxaResult,
+): T {
   let parsed: unknown;
   try {
     parsed = JSON.parse(result.stdout);
@@ -17,5 +19,5 @@ export function parseJxaOutput(result: JxaResult): JxaResponse {
   if (!response.success) {
     throw new Error(response.error);
   }
-  return response;
+  return response as T;
 }
